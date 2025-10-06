@@ -12,7 +12,48 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       || /^towardsdatascience\.com$/i.test(host);
     if (!isAllowed) return sendResponse({ error: "Unsupported site" });
 
-    const originalArticle = document.querySelector("article");
+    function findBestArticleContainerHeuristic() {
+      try {
+        const paragraphs = Array.from(document.querySelectorAll("p"));
+        const candidateScoreByElement = new Map();
+        for (const p of paragraphs) {
+          const text = (p.innerText || "").trim();
+          if (text.length < 80) continue; // prefer substantive paragraphs
+          let ancestor = p;
+          for (let i = 0; i < 6 && ancestor; i++) {
+            ancestor = ancestor.parentElement;
+            if (!ancestor) break;
+            if (!/^(ARTICLE|MAIN|SECTION|DIV)$/i.test(ancestor.tagName)) continue;
+            const prev = candidateScoreByElement.get(ancestor) || 0;
+            candidateScoreByElement.set(ancestor, prev + 1);
+          }
+        }
+        let best = null;
+        let maxScore = 0;
+        for (const [el, score] of candidateScoreByElement.entries()) {
+          if (score > maxScore) { maxScore = score; best = el; }
+        }
+        return best || null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    const originalArticle =
+      document.querySelector("article") ||
+      document.querySelector("main article") ||
+      document.querySelector("div[data-test-id=\"post-content\"]") ||
+      document.querySelector("div[data-testid=\"storyContent\"]") ||
+      document.querySelector("section[data-testid=\"storyContent\"]") ||
+      document.querySelector("div[data-testid=\"postContent\"]") ||
+      document.querySelector("div[role=\"main\"] article") ||
+      document.querySelector("main") ||
+      document.querySelector("div[role=\"main\"]") ||
+      (function(){
+        const h1 = document.querySelector("h1");
+        return h1 ? (h1.closest("article, main, section, div") || null) : null;
+      })() ||
+      findBestArticleContainerHeuristic();
     if (!originalArticle) return sendResponse({ error: "No article found" });
 
     // Work on a clone to avoid mutating the live DOM
