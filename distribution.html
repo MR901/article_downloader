@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArticleDoc - Download</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #007acc;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .download-section {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .download-btn {
+            display: inline-block;
+            background: #007acc;
+            color: white;
+            padding: 15px 30px;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 18px;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+        .download-btn:hover {
+            background: #005a9e;
+        }
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        .feature {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .feature-icon {
+            font-size: 2em;
+            color: #007acc;
+            margin-bottom: 10px;
+        }
+        .installation {
+            background: #e8f4fd;
+            border-left: 4px solid #007acc;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📄 ArticleDoc</h1>
+        <p>Transform articles into clean, readable PDFs with images</p>
+    </div>
+
+    <div class="download-section">
+        <h2>Download Extension</h2>
+        <p>Version 0.1.0 • Compatible with Firefox</p>
+        <a href="web-ext-artifacts/articledoc-0.1.0.zip" class="download-btn" download>
+            Download for Firefox
+        </a>
+        <p style="margin-top: 15px; font-size: 14px; color: #666;">
+            File size: ~2.3 MB (includes all dependencies)
+        </p>
+    </div>
+
+    <div class="features">
+        <div class="feature">
+            <div class="feature-icon">✓</div>
+            <h3>Clean Extraction</h3>
+            <p>Removes ads, footers, and clutter from Medium articles, keeping only the essential content.</p>
+        </div>
+        <div class="feature">
+            <div class="feature-icon">✓</div>
+            <h3>Images Included</h3>
+            <p>Preserves images from articles, converting them to static formats for reliable PDF embedding.</p>
+        </div>
+        <div class="feature">
+            <div class="feature-icon">✓</div>
+            <h3>Proper Formatting</h3>
+            <p>Creates properly formatted PDFs with headings, paragraphs, and pagination for easy reading.</p>
+        </div>
+        <div class="feature">
+            <div class="feature-icon">✓</div>
+            <h3>Selectable Text</h3>
+            <p>Generated PDFs contain selectable, searchable text - not just images of text.</p>
+        </div>
+    </div>
+
+    <div class="installation">
+        <h3>Installation Instructions</h3>
+        <ol>
+            <li>Download the ZIP file above</li>
+            <li>Open Firefox and navigate to <code>about:debugging</code></li>
+            <li>Click "This Firefox" in the left sidebar</li>
+            <li>Click "Load Temporary Add-on..."</li>
+            <li>Select the downloaded ZIP file</li>
+            <li>The extension icon will appear in your Firefox toolbar!</li>
+        </ol>
+    </div>
+
+    <div class="footer">
+        <p>
+            <strong>Support:</strong> For issues or feature requests,
+            please check the <a href="https://github.com/yourusername/medium-pdf-converter">GitHub repository</a>
+        </p>
+        <p>
+            <em>Note: This is a self-distributed extension. For the official version, visit
+            <a href="https://addons.mozilla.org">addons.mozilla.org</a> (coming soon!)</em>
+        </p>
+    </div>
+</body>
+</html>

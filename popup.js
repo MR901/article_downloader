@@ -293,6 +293,48 @@ async function generatePDF(article) {
       lineWidth = 0;
     };
 
+    function combineSingleCharRuns(tokens) {
+      const out = [];
+      let buffer = "";
+      let trailingSpace = false;
+      // Prefer Unicode properties; fallback to ASCII
+      const singleCharRe = (() => {
+        try {
+          return new RegExp("^(?:\\p{L}|\\p{N})\\s?$", "u");
+        } catch (_) {
+          return /^(?:[A-Za-z0-9])\s?$/;
+        }
+      })();
+      for (const tok of tokens) {
+        // Pure whitespace tokens are not combined
+        if (/^\s+$/.test(tok)) {
+          if (buffer) {
+            out.push(buffer + (trailingSpace ? " " : ""));
+            buffer = "";
+            trailingSpace = false;
+          }
+          out.push(tok);
+          continue;
+        }
+        if (singleCharRe.test(tok)) {
+          // Append the single visible char
+          buffer += tok.trim();
+          // Track if this single-char token ended with a space
+          if (/\s$/.test(tok)) trailingSpace = true;
+          continue;
+        }
+        // Non single-char token → flush buffer then push token
+        if (buffer) {
+          out.push(buffer + (trailingSpace ? " " : ""));
+          buffer = "";
+          trailingSpace = false;
+        }
+        out.push(tok);
+      }
+      if (buffer) out.push(buffer + (trailingSpace ? " " : ""));
+      return out;
+    }
+
     for (const seg of segments) {
       // Force-break on newlines inside segments
       const chunks = String(seg.text || "").split(/(\n)/);
@@ -303,7 +345,8 @@ async function generatePDF(article) {
         }
         if (!chunk) continue;
         // Split into tokens preserving spaces
-        const tokens = chunk.match(/\S+\s*|\s+/g) || [];
+        const rawTokens = chunk.match(/\S+\s*|\s+/g) || [];
+        const tokens = combineSingleCharRuns(rawTokens);
         for (let tok of tokens) {
           // avoid leading spaces on new lines
           if (!current.length && /^\s+$/.test(tok)) continue;

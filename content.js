@@ -90,7 +90,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     // --- Helpers ---
     const DROP_TEXT_PATTERNS = [
-      /press\s+enter\s+or\s+click\s+to\s+view\s+image\s+in\s+full\s+size/i
+      /press\s+enter\s+or\s+click\s+to\s+view\s+image\s+in\s+full\s+size/i,
+      /^\s*(?:🔒\s*)?members?[-\s]?only\s+story\s*$/i
     ];
 
     // Treat bare "Introduction" (optionally with trailing punctuation) as non-content heading
