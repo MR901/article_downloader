@@ -1,23 +1,23 @@
 {
-  "manifest_version": 3,
+  "manifest_version": 2,
   "name": "ArticleDoc",
   "version": "0.1.0",
   "description": "Extract articles into clean, readable PDFs with images.",
   "permissions": [
     "activeTab",
     "downloads",
-    "tabs"
-  ],
-  "host_permissions": [
+    "tabs",
     "*://*.medium.com/*",
     "*://cdn-images-1.medium.com/*",
-    "*://miro.medium.com/*"
+    "*://miro.medium.com/*",
+    "https://blog.stackademic.com/*",
+    "https://towardsdatascience.com/*"
   ],
   "icons": {
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-  "action": {
+  "browser_action": {
     "default_popup": "popup.html",
     "default_icon": {
       "48": "icons/icon-48.png",
@@ -25,11 +25,15 @@
     }
   },
   "background": {
-    "service_worker": "background.js"
+    "scripts": ["background.js"]
   },
   "content_scripts": [
     {
-      "matches": ["*://*.medium.com/*"],
+      "matches": [
+        "*://*.medium.com/*",
+        "https://blog.stackademic.com/*",
+        "https://towardsdatascience.com/*"
+      ],
       "js": ["content.js"]
     }
   ]

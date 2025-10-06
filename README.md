@@ -1,8 +1,7 @@
 # ArticleDoc
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/yourusername/articledoc)
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/MR901/articledoc)
 [![Firefox Extension](https://img.shields.io/badge/Firefox-Extension-orange.svg)](https://addons.mozilla.org)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 > **ArticleDoc** - A Firefox extension that converts Medium articles into clean, formatted PDFs with selectable text and preserved images.
 
@@ -22,7 +21,7 @@
 1. **Download & Build**:
    ```bash
    # Clone or download the project
-   git clone https://github.com/yourusername/articledoc.git
+   git clone https://github.com/MR901/articledoc.git
    cd articledoc
 
    # Build the extension
@@ -168,7 +167,7 @@ For developers and testing:
 
 1. **Clone & Build**:
    ```bash
-   git clone https://github.com/yourusername/articledoc.git
+   git clone https://github.com/MR901/articledoc.git
    cd articledoc
    make build
    ```
@@ -229,7 +228,7 @@ gh release create v0.1.0 \
 #### 3. **Share Your Release**
 Once created, you'll get a permanent link like:
 ```
-https://github.com/yourusername/articledoc/releases/tag/v0.1.0
+https://github.com/MR901/articledoc/releases/tag/v0.1.0
 ```
 
 Users can download from there, and you can link to it in your documentation.
@@ -331,7 +330,7 @@ We welcome contributions! Here's how to get involved:
 1. **Fork** the repository
 2. **Clone** your fork:
    ```bash
-   git clone https://github.com/yourusername/articledoc.git
+   git clone https://github.com/MR901/articledoc.git
    cd articledoc
    ```
 
@@ -360,9 +359,6 @@ We welcome contributions! Here's how to get involved:
 - **Error handling**: Graceful degradation for missing elements
 - **Performance**: Process large articles in chunks
 
-## License
-
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 
@@ -376,17 +372,6 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 - **Firefox Add-ons**: [addons.mozilla.org](https://addons.mozilla.org) (coming soon)
 - **NPM**: [web-ext](https://www.npmjs.com/package/web-ext) - Build tool
 - **jsPDF**: [jspdf](https://parall.ax/products/jspdf) - PDF generation library
-- **Releases**: [GitHub Releases](https://github.com/yourusername/articledoc/releases) - Download stable versions
-- **Issues**: [GitHub Issues](https://github.com/yourusername/articledoc/issues) - Report bugs and request features
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/articledoc/discussions) - Community discussions
+- **Releases**: [GitHub Releases](https://github.com/MR901/articledoc/releases) - Download stable versions
 
----
-
-<div align="center">
-
-**Made with ❤️ for readers who want clean, portable copies of their favorite articles**
-
-[⭐ Star this project](https://github.com/yourusername/articledoc) • [🐛 Report Issues](https://github.com/yourusername/articledoc/issues) • [💬 Start Discussion](https://github.com/yourusername/articledoc/discussions)
-
-</div>
 

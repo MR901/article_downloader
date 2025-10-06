@@ -6,8 +6,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   console.log("[content] onMessage:", msg);
   if (msg.action === "extractMediumArticle") {
     console.log("[content] Extracting article with formatting...");
-    const isMedium = /medium\.com/.test(location.hostname);
-    if (!isMedium) return sendResponse({ error: "Not a Medium article" });
+    const host = String(location.hostname || "");
+    const isAllowed = /(^|\.)medium\.com$/i.test(host)
+      || /^blog\.stackademic\.com$/i.test(host)
+      || /^towardsdatascience\.com$/i.test(host);
+    if (!isAllowed) return sendResponse({ error: "Unsupported site" });
 
     const originalArticle = document.querySelector("article");
     if (!originalArticle) return sendResponse({ error: "No article found" });

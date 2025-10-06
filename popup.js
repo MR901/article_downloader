@@ -1,29 +1,49 @@
-document.getElementById("convert").addEventListener("click", async () => {
+function updateStatus(message, type = "info") {
+  try {
+    const el = document.getElementById("status");
+    if (!el) return;
+    el.style.color = type === "error" ? "#c00" : type === "success" ? "#0a0" : "#666";
+    el.textContent = String(message || "");
+  } catch (_) {}
+}
+
+const convertBtn = document.getElementById("convert");
+
+convertBtn.addEventListener("click", async () => {
   console.log("[popup] Generate Clean PDF clicked");
   try {
+    convertBtn.disabled = true;
+    updateStatus("Locating active tab…");
     const tabs = await queryTabs({ active: true, currentWindow: true });
     const tab = tabs && tabs[0];
     if (!tab) {
       console.error("[popup] No active tab found");
-      alert("No active tab found");
+      updateStatus("No active tab found", "error");
+      convertBtn.disabled = false;
       return;
     }
 
+    updateStatus("Extracting article…");
     const article = await sendMessageToTab(tab.id, { action: "extractMediumArticle" });
     console.log("[popup] Article response:", article);
 
     if (!article || article.error) {
       const reason = (article && article.error) || "Unknown error";
       console.error("[popup] Extraction failed:", reason);
-      alert("Failed to extract article: " + reason);
+      updateStatus("Failed to extract article: " + reason, "error");
+      convertBtn.disabled = false;
       return;
     }
 
+    updateStatus("Generating PDF…");
     await generatePDF(article);
     console.log("[popup] PDF generated successfully");
+    updateStatus("PDF saved.", "success");
+    convertBtn.disabled = false;
   } catch (err) {
     console.error("[popup] Unhandled error:", err);
-    alert("Error: " + (err && err.message ? err.message : String(err)));
+    updateStatus("Error: " + (err && err.message ? err.message : String(err)), "error");
+    convertBtn.disabled = false;
   }
 });
 
