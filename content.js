@@ -261,38 +261,85 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
     }
 
+    function normalizeMentionUrl(href) {
+      if (!href) return null;
+      try {
+        const u = new URL(href, location.href);
+        // Strip tracking parameters and hash fragments universally
+        u.search = "";
+        u.hash = "";
+        return u.href;
+      } catch (_) {
+        const s = String(href);
+        const noHash = s.split("#")[0];
+        return noHash.split("?")[0];
+      }
+    }
+
     function extractMentionsAndPrune(root) {
       const results = [];
-      const seen = new Set();
+      const processed = new Set();
       const domainRegex = /\b[a-z0-9.-]+\.(?:medium\.com|[a-z]{2,})(?:\b|\s|$)/i;
 
-      const candidates = Array.from(root.querySelectorAll("div")).filter(div => {
-        // Must look like a compact card with a title (h2) and show a domain line somewhere
-        // Restrict to a direct child h2 to avoid matching large article containers
-        const hasH2 = !!div.querySelector(":scope > h2");
+      // Pass 1: Anchors that visually look like Medium "discover"/card links
+      const anchorCards = Array.from(root.querySelectorAll('a[href]')).filter(a => {
+        const txt = (a.innerText || "").trim();
+        if (!txt) return false;
+        const hasH2 = !!a.querySelector('h2');
         if (!hasH2) return false;
-        const txt = (div.innerText || "").trim();
+        // Require a domain line somewhere inside the anchor text
+        if (!domainRegex.test(txt)) return false;
+        return true;
+      });
+
+      for (const a of anchorCards) {
+        if (processed.has(a)) continue;
+        const titleEl = a.querySelector('h2');
+        const subtitleEl = a.querySelector('h3');
+        const title = titleEl ? String(titleEl.innerText || "").trim() : null;
+        const subtitle = subtitleEl ? String(subtitleEl.innerText || "").trim() : null;
+        const url = normalizeMentionUrl(toAbsoluteUrl(a.getAttribute('href')));
+        if (title && url) {
+          results.push({ title, subtitle, url });
+          processed.add(a);
+          // Remove the visible card container to avoid leakage into article content
+          let cardRoot = a.parentElement;
+          // Climb to a DIV container but stop at root
+          while (cardRoot && cardRoot !== root && cardRoot.tagName !== 'DIV') {
+            cardRoot = cardRoot.parentElement;
+          }
+          if (cardRoot && root.contains(cardRoot)) cardRoot.remove();
+          else a.remove();
+        }
+      }
+
+      // Pass 2: Fallback for card-like DIVs that weren't wrapped in anchors
+      const candidates = Array.from(root.querySelectorAll('div')).filter(div => {
+        if (processed.has(div)) return false;
+        const hasH2 = !!div.querySelector('h2');
+        if (!hasH2) return false;
+        const txt = (div.innerText || '').trim();
         if (!txt) return false;
         if (!domainRegex.test(txt)) return false;
         // Avoid enormous containers (likely the whole article wrapper)
         const childCount = div.children ? div.children.length : 0;
-        if (childCount > 12) return false;
+        if (childCount > 20) return false;
+        const numH2 = div.querySelectorAll('h2').length;
+        if (numH2 > 3) return false;
         return true;
       });
 
       for (const card of candidates) {
-        if (seen.has(card)) continue;
-        const titleEl = card.querySelector(":scope > h2") || card.querySelector("h2");
-        const subtitleEl = card.querySelector("h3");
-        const linkEl = card.querySelector("a[href]");
-        const title = titleEl ? String(titleEl.innerText || "").trim() : null;
-        const subtitle = subtitleEl ? String(subtitleEl.innerText || "").trim() : null;
-        const url = linkEl ? toAbsoluteUrl(linkEl.getAttribute("href")) : null;
-
-        // Require at least a title and a URL to produce a clickable mention
+        if (processed.has(card)) continue;
+        const titleEl = card.querySelector('h2');
+        const subtitleEl = card.querySelector('h3');
+        const linkEl = card.querySelector('a[href]');
+        const title = titleEl ? String(titleEl.innerText || '').trim() : null;
+        const subtitle = subtitleEl ? String(subtitleEl.innerText || '').trim() : null;
+        const url = linkEl ? normalizeMentionUrl(toAbsoluteUrl(linkEl.getAttribute('href'))) : null;
         if (title && url) {
           results.push({ title, subtitle, url });
-          seen.add(card);
+          processed.add(card);
           card.remove();
         }
       }
@@ -343,7 +390,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const linkEl = card.querySelector("a[href]");
         const title = titleEl ? String(titleEl.innerText || "").trim() : null;
         const subtitle = subtitleEl ? String(subtitleEl.innerText || "").trim() : null;
-        const url = linkEl ? toAbsoluteUrl(linkEl.getAttribute("href")) : null;
+        const url = linkEl ? normalizeMentionUrl(toAbsoluteUrl(linkEl.getAttribute("href"))) : null;
 
         if (title && url) {
           results.push({ title, subtitle, url });
@@ -358,8 +405,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const seen = new Set();
       for (const m of arr || []) {
         if (!m) continue;
-        let url = null;
-        try { url = m.url ? new URL(m.url, location.href).href : null; } catch (_) { url = m.url || null; }
+        const url = m.url ? normalizeMentionUrl(m.url) : null;
         const titleKey = (m.title || "").trim().toLowerCase();
         const key = url ? ("u:" + url) : ("t:" + titleKey);
         if (seen.has(key)) continue;

@@ -72,6 +72,17 @@ async function generatePDF(article) {
     }
   }
 
+  function urlToDomain(u) {
+    try {
+      const x = new URL(u, article.canonicalUrl || undefined);
+      return x.hostname;
+    } catch {
+      const s = String(u || "").trim();
+      const m = s.match(/^[a-z]+:\/\/([^\/]+)/i);
+      return (m && m[1]) || s;
+    }
+  }
+
   function ensureSpace(h) {
     if (y + h <= pageH - margin) return;
     pdf.addPage();
@@ -516,14 +527,13 @@ async function generatePDF(article) {
     pdf.text("Other mentions by Author", margin, y);
     y += Math.round(SIZES.h3 * 1.6);
 
-    // Bullet list of mentions (title – optional subtitle) with clickable link
+    // Render: "domain | title" as a single clickable line per mention
     const listItems = article.mentions.map(m => {
-      const parts = [];
-      if (m && m.title) parts.push({ text: m.title, bold: true });
-      if (m && m.subtitle) parts.push({ text: " – " + m.subtitle });
-      if (!parts.length) parts.push({ text: String(m && (m.url || "")) });
-      // Make the entire last token (or the title if present) clickable by attaching link to each segment
-      return parts.map(p => ({ ...p, link: m && m.url ? m.url : null }));
+      const url = m && m.url ? normalizeUrl(m.url) : null;
+      const domain = url ? urlToDomain(url) : "";
+      const title = (m && m.title) ? m.title : (url || "");
+      const line = `${domain} | ${title}`;
+      return [{ text: line, bold: false, link: url }];
     });
     drawList({ ordered: false, items: listItems });
   }
