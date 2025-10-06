@@ -1,0 +1,26 @@
+{
+  "manifest_version": 2,
+  "name": "Medium to Clean PDF Converter",
+  "version": "1.2",
+  "description": "Extract Medium articles into clean, readable PDFs with images.",
+  "permissions": [
+    "activeTab",
+    "downloads",
+    "tabs",
+    "https://medium.com/*",
+    "*://*.medium.com/*",
+    "*://cdn-images-1.medium.com/*",
+    "*://miro.medium.com/*"
+  ],
+  "browser_action": {
+    "default_popup": "popup.html",
+    "default_icon": "icons/icon.png"
+  },
+  "background": { "scripts": ["background.js"] },
+  "content_scripts": [
+    {
+      "matches": ["https://medium.com/*", "*://*.medium.com/*"],
+      "js": ["content.js"]
+    }
+  ]
+}
