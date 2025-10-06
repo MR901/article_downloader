@@ -223,7 +223,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     function isCodeLike(el) {
       if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
-      if (el.tagName === "PRE" || el.querySelector("pre")) return true;
+      // Treat a real PRE as the canonical code block
+      if (el.tagName === "PRE") return true;
+      // If this node lives inside an existing PRE/CODE, skip to avoid duplicates
+      if (el.closest("pre, code")) return false;
+      // If this node contains a PRE anywhere inside, let the PRE instance handle it
+      if (el.querySelector("pre")) return false;
       // Highlight.js style spans inside indicate code formatting
       const hasHljs = !!el.querySelector('[class*="hljs-"]');
       if (!hasHljs) return false;
@@ -494,7 +499,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       // Capture code-like blocks that Medium sometimes wraps without <pre>
       if (isCodeLike(el)) {
         const cd = extractCodeBlock(el);
-        if (cd) current.content.push(cd);
+        if (cd) {
+          const last = current.content[current.content.length - 1];
+          if (!(last && last.type === "code" && last.text === cd.text)) {
+            current.content.push(cd);
+          }
+        }
         continue;
       }
       if (/^H[2-4]$/.test(tag)) {
@@ -529,7 +539,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
       if (tag === "PRE") {
         const cd = extractCodeBlock(el);
-        if (cd) current.content.push(cd);
+        if (cd) {
+          const last = current.content[current.content.length - 1];
+          if (!(last && last.type === "code" && last.text === cd.text)) {
+            current.content.push(cd);
+          }
+        }
         continue;
       }
       if (tag === "HR") {

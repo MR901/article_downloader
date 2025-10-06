@@ -121,6 +121,167 @@ async function generatePDF(article) {
     }
   }
 
+  // --- Emoji support helpers ---
+  // Cache for canvas, conversions and rendered emoji images
+  const __emojiCache = {
+    canvas: null,
+    ctx: null,
+    pxToPtByKey: new Map(),
+    dataUrlByKey: new Map()
+  };
+
+  function getCanvas() {
+    if (__emojiCache.canvas && __emojiCache.ctx) return __emojiCache;
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    __emojiCache.canvas = canvas;
+    __emojiCache.ctx = ctx;
+    return __emojiCache;
+  }
+
+  function fontSignatureForSeg(seg, size) {
+    const s = styleFromSeg(seg || {});
+    return `${s.family}|${s.style}|${size}`;
+  }
+
+  function setCanvasFont(ctx, seg, sizePx) {
+    const s = styleFromSeg(seg || {});
+    const isMono = s.family === "courier";
+    const weight = /bold/.test(s.style) ? "bold" : "normal";
+    const italic = /italic/.test(s.style) ? "italic" : "normal";
+    const family = isMono ? "monospace" : "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Segoe UI Symbol', sans-serif";
+    ctx.font = `${italic} ${weight} ${Math.max(1, Math.round(sizePx))}px ${family}`;
+    ctx.textBaseline = "alphabetic";
+  }
+
+  function getPxToPtFactor(seg, size) {
+    const key = fontSignatureForSeg(seg, size);
+    if (__emojiCache.pxToPtByKey.has(key)) return __emojiCache.pxToPtByKey.get(key);
+    const { ctx } = getCanvas();
+    setCanvasFont(ctx, seg, size);
+    const px = ctx.measureText("M").width || 1;
+    let pt = 0;
+    withSegFont(seg, size, () => {
+      pt = pdf.getTextWidth("M") || 1;
+    });
+    const factor = pt / px;
+    __emojiCache.pxToPtByKey.set(key, factor);
+    return factor;
+  }
+
+  // Basic emoji detection per grapheme (Extended_Pictographic or VS-16 or ZWJ sequences)
+  function isEmojiGrapheme(gr) {
+    if (!gr) return false;
+    try {
+      // If contains ZWJ, likely an emoji sequence
+      if (gr.indexOf("\u200D") !== -1) return true;
+      // Variation Selector-16 indicates emoji presentation
+      if (/[\uFE0F]/u.test(gr)) return true;
+      // Extended_Pictographic covers most emoji code points
+      if (/(\p{Extended_Pictographic})/u.test(gr)) return true;
+    } catch (_) {
+      // Fallback for engines without Unicode property escapes: common emoji ranges
+      if (/[\u2190-\u21FF\u2300-\u27BF\u2600-\u27BF\u1F300-\u1FAFF]/.test(gr)) return true;
+    }
+    return false;
+  }
+
+  function segmentGraphemes(text) {
+    if (!text) return [];
+    if (typeof Intl !== "undefined" && Intl.Segmenter) {
+      try {
+        const seg = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+        return Array.from(seg.segment(text), s => s.segment);
+      } catch (_) {}
+    }
+    // Fallback: split by code points; this won't merge ZWJ sequences perfectly but works as a baseline
+    return Array.from(text);
+  }
+
+  function measureEmojiWidthPt(emoji, seg, size) {
+    const { ctx } = getCanvas();
+    setCanvasFont(ctx, seg, size);
+    const px = ctx.measureText(emoji).width || size;
+    const k = getPxToPtFactor(seg, size);
+    // Add a small fudge factor to avoid under-measurement that can cause overflow
+    return px * k * 1.08;
+  }
+
+  function getEmojiDataUrl(emoji, seg, size) {
+    const key = `${emoji}|${fontSignatureForSeg(seg, size)}`;
+    if (__emojiCache.dataUrlByKey.has(key)) return __emojiCache.dataUrlByKey.get(key);
+    const scale = Math.min(4, Math.max(2, Math.ceil(window.devicePixelRatio || 2)));
+    const heightPx = Math.max(8, Math.round(size * scale));
+    // Approximate width via measure
+    const { ctx, canvas } = getCanvas();
+    setCanvasFont(ctx, seg, heightPx);
+    const wpx = Math.ceil(ctx.measureText(emoji).width) + Math.ceil(heightPx * 0.15);
+    canvas.width = Math.max(1, wpx);
+    canvas.height = heightPx + Math.ceil(heightPx * 0.2);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setCanvasFont(ctx, seg, heightPx);
+    ctx.fillStyle = "#000";
+    // Draw near baseline; approximate alphabetic baseline at ~0.85 of font size
+    const baseline = Math.round(heightPx * 0.85);
+    ctx.fillText(emoji, 0, baseline);
+    const url = canvas.toDataURL("image/png");
+    __emojiCache.dataUrlByKey.set(key, url);
+    return url;
+  }
+
+  function splitTokenIntoFragments(tok, seg, size) {
+    // Returns array of { type: 'text'|'emoji', text, width }
+    const graphemes = segmentGraphemes(tok);
+    const out = [];
+    let currentText = "";
+    let currentW = 0;
+    function flushText() {
+      if (!currentText) return;
+      let w = 0;
+      withSegFont(seg, size, () => {
+        w = measure(currentText) * 1.02; // conservative fudge to avoid underestimated wraps
+      });
+      out.push({ type: "text", text: currentText, width: w });
+      currentText = "";
+      currentW = 0;
+    }
+    for (const g of graphemes) {
+      if (isEmojiGrapheme(g)) {
+        flushText();
+        const w = measureEmojiWidthPt(g, seg, size);
+        out.push({ type: "emoji", text: g, width: w });
+      } else {
+        currentText += g;
+      }
+    }
+    flushText();
+    return out;
+  }
+
+  function drawFragments(fragments, x, y, seg, size) {
+    for (const f of fragments) {
+      if (f.type === "text" && f.text) {
+        withSegFont(seg, size, () => {
+          pdf.text(f.text, x, y);
+        });
+        x += f.width;
+      } else if (f.type === "emoji" && f.text) {
+        const dataUrl = getEmojiDataUrl(f.text, seg, size);
+        const ascent = Math.round(size * 0.8);
+        const heightPt = size; // draw 1em high
+        const widthPt = f.width || size;
+        pdf.addImage(dataUrl, "PNG", x, y - ascent, widthPt, heightPt);
+        x += widthPt;
+      }
+    }
+    return x;
+  }
+
+  function drawTextWithEmojis(text, x, y, seg, size) {
+    const frags = splitTokenIntoFragments(text, seg, size);
+    drawFragments(frags, x, y, seg, size);
+  }
+
   function layoutSegmentsIntoLines(segments, maxWidth, size) {
     const lines = [];
     let current = [];
@@ -146,15 +307,14 @@ async function generatePDF(article) {
         for (let tok of tokens) {
           // avoid leading spaces on new lines
           if (!current.length && /^\s+$/.test(tok)) continue;
-          let w = 0;
-          withSegFont(seg, size, () => {
-            w = measure(tok);
-          });
+          // Measure as composition of text and emoji fragments
+          const fragments = splitTokenIntoFragments(tok, seg, size);
+          const w = fragments.reduce((acc, f) => acc + (f.width || 0), 0);
           if (lineWidth + w > maxWidth && current.length) {
             pushLine();
             if (/^\s+$/.test(tok)) continue; // drop leading whitespace on new line
           }
-          current.push({ ...seg, text: tok, width: w });
+          current.push({ ...seg, text: tok, width: w, fragments });
           lineWidth += w;
         }
       }
@@ -176,12 +336,31 @@ async function generatePDF(article) {
         pdf.setFontSize(SIZES.body);
         if (part.link) {
           pdf.setTextColor(...COLORS.link);
-          pdf.textWithLink(part.text, x, y, { url: part.link });
+          if (part.fragments) {
+            // Render fragments; textWithLink can't wrap mixed fragments, so use plain text and add link area over the span
+            const startX = x;
+            x = drawFragments(part.fragments, x, y, part, SIZES.body);
+            // Add an invisible link rectangle covering the rendered span
+            const linkWidth = x - startX;
+            if (linkWidth > 0) {
+              // y is baseline; approximate ascent and height
+              const ascent = Math.round(SIZES.body * 0.8);
+              const height = Math.max(10, Math.round(LINE_HEIGHTS.body * 0.9));
+              pdf.link(startX, y - ascent, linkWidth, height, { url: part.link });
+            }
+          } else {
+            pdf.textWithLink(part.text, x, y, { url: part.link });
+            x += part.width;
+          }
         } else {
           pdf.setTextColor(...COLORS.body);
-          pdf.text(part.text, x, y);
+          if (part.fragments) {
+            x = drawFragments(part.fragments, x, y, part, SIZES.body);
+          } else {
+            pdf.text(part.text, x, y);
+            x += part.width;
+          }
         }
-        x += part.width;
       }
       y += LINE_HEIGHTS.body;
     }
@@ -206,7 +385,8 @@ async function generatePDF(article) {
         let x = margin;
         if (li === 0) {
           pdf.setTextColor(...COLORS.body);
-          pdf.text(bullet, x, y);
+          // Draw bullet with trailing space to match measured width
+          pdf.text(bullet + " ", x, y);
         }
         x += bulletW;
         for (const part of lines[li]) {
@@ -215,12 +395,28 @@ async function generatePDF(article) {
           pdf.setFontSize(SIZES.body);
           if (part.link) {
             pdf.setTextColor(...COLORS.link);
-            pdf.textWithLink(part.text, x, y, { url: part.link });
+            if (part.fragments) {
+              const startX = x;
+              x = drawFragments(part.fragments, x, y, part, SIZES.body);
+              const linkWidth = x - startX;
+              if (linkWidth > 0) {
+                const ascent = Math.round(SIZES.body * 0.8);
+                const height = Math.max(10, Math.round(LINE_HEIGHTS.body * 0.9));
+                pdf.link(startX, y - ascent, linkWidth, height, { url: part.link });
+              }
+            } else {
+              pdf.textWithLink(part.text, x, y, { url: part.link });
+              x += part.width;
+            }
           } else {
             pdf.setTextColor(...COLORS.body);
-            pdf.text(part.text, x, y);
+            if (part.fragments) {
+              x = drawFragments(part.fragments, x, y, part, SIZES.body);
+            } else {
+              pdf.text(part.text, x, y);
+              x += part.width;
+            }
           }
-          x += part.width;
         }
         y += LINE_HEIGHTS.body;
       }
@@ -252,11 +448,27 @@ async function generatePDF(article) {
         pdf.setFontSize(SIZES.quote);
         pdf.setTextColor(...(part.link ? COLORS.link : COLORS.muted));
         if (part.link) {
-          pdf.textWithLink(part.text, x, y, { url: part.link });
+          if (part.fragments) {
+            const startX = x;
+            x = drawFragments(part.fragments, x, y, part, SIZES.quote);
+            const linkWidth = x - startX;
+            if (linkWidth > 0) {
+              const ascent = Math.round(SIZES.quote * 0.8);
+              const height = Math.max(10, Math.round(LINE_HEIGHTS.quote * 0.9));
+              pdf.link(startX, y - ascent, linkWidth, height, { url: part.link });
+            }
+          } else {
+            pdf.textWithLink(part.text, x, y, { url: part.link });
+            x += part.width;
+          }
         } else {
-          pdf.text(part.text, x, y);
+          if (part.fragments) {
+            x = drawFragments(part.fragments, x, y, part, SIZES.quote);
+          } else {
+            pdf.text(part.text, x, y);
+            x += part.width;
+          }
         }
-        x += part.width;
       }
       y += LINE_HEIGHTS.quote;
     }
@@ -300,31 +512,68 @@ async function generatePDF(article) {
       }
     }
 
-    // Compute background height using per-line heights
-    let totalH = 12; // vertical padding
-    for (const rl of renderLines) {
-      const lh = Math.round(LINE_HEIGHTS.code * (rl.size / baseSize));
-      totalH += lh;
+    // Split the code block across pages if needed, drawing a background per chunk
+    const padX = 8; // horizontal padding on each side
+    const padTop = 8;
+    const padBottom = 8;
+    const lineHeights = renderLines.map(rl => Math.round(LINE_HEIGHTS.code * (rl.size / baseSize)));
+
+    let i = 0;
+    while (i < renderLines.length) {
+      // Ensure at least one line fits; if not, move to a new page
+      let available = (pageH - margin) - y;
+      const minNeeded = padTop + (lineHeights[i] || Math.round(LINE_HEIGHTS.code)) + padBottom;
+      if (available < minNeeded) {
+        pdf.addPage();
+        y = margin;
+        available = (pageH - margin) - y;
+      }
+
+      // Accumulate as many lines as fit in the remaining vertical space
+      let used = padTop + padBottom;
+      const start = i;
+      let end = i;
+      while (end < renderLines.length) {
+        const lh = lineHeights[end];
+        if (used + lh > available) break;
+        used += lh;
+        end++;
+      }
+      if (end === start) {
+        // Fallback: force at least one line per page
+        end = start + 1;
+        used = padTop + lineHeights[start] + padBottom;
+      }
+
+      // Draw background for this chunk
+      pdf.setDrawColor(230, 230, 230);
+      pdf.setFillColor(245, 245, 245);
+      pdf.rect(margin - padX, y, textW + padX * 2, used, "F");
+
+      // Draw lines inside the background using an ascent-based baseline for the first line
+      const firstAscent = Math.round((renderLines[start]?.size || baseSize) * 0.8);
+      let baselineY = y + padTop + firstAscent;
+      for (let j = start; j < end; j++) {
+        const rl = renderLines[j];
+        pdf.setFontSize(rl.size);
+        pdf.text(rl.text, margin, baselineY);
+        baselineY += lineHeights[j];
+      }
+
+      // Advance y for the next chunk or following content
+      y += used;
+      i = end;
+      if (i < renderLines.length) {
+        // No extra gap between chunks; start next chunk immediately
+      } else {
+        // Larger gap after the whole block to avoid background appearing under next line's ascenders
+        const afterGap = Math.max(10, Math.round(LINE_HEIGHTS.body * 0.75));
+        y += afterGap;
+      }
     }
 
-    // Draw background
-    const firstLineH = Math.round(LINE_HEIGHTS.code * (renderLines.length ? renderLines[0].size / baseSize : 1));
-    ensureSpace(totalH);
-    pdf.setDrawColor(230, 230, 230);
-    pdf.setFillColor(245, 245, 245);
-    pdf.rect(margin - 6, y - firstLineH + 4, textW + 12, totalH, "F");
-
-    // Draw text lines
-    for (const rl of renderLines) {
-      const lh = Math.round(LINE_HEIGHTS.code * (rl.size / baseSize));
-      ensureSpace(lh);
-      pdf.setFontSize(rl.size);
-      pdf.text(rl.text, margin, y);
-      y += lh;
-    }
     // restore default code size
     pdf.setFontSize(baseSize);
-    y += 4;
   }
 
   async function drawImage(imgItem) {
@@ -382,12 +631,28 @@ async function generatePDF(article) {
         pdf.setFontSize(size);
         if (part.link) {
           pdf.setTextColor(...COLORS.link);
-          pdf.textWithLink(part.text, x, y, { url: part.link });
+          if (part.fragments) {
+            const startX = x;
+            x = drawFragments(part.fragments, x, y, part, size);
+            const linkWidth = x - startX;
+            if (linkWidth > 0) {
+              const ascent = Math.round(size * 0.8);
+              const height = Math.max(8, Math.round(size * 1.2));
+              pdf.link(startX, y - ascent, linkWidth, height, { url: part.link });
+            }
+          } else {
+            pdf.textWithLink(part.text, x, y, { url: part.link });
+            x += part.width;
+          }
         } else {
           pdf.setTextColor(...COLORS.muted);
-          pdf.text(part.text, x, y);
+          if (part.fragments) {
+            x = drawFragments(part.fragments, x, y, part, size);
+          } else {
+            pdf.text(part.text, x, y);
+            x += part.width;
+          }
         }
-        x += part.width;
       }
       y += lineHeight;
     }
@@ -397,14 +662,22 @@ async function generatePDF(article) {
   function drawHeading(text, level) {
     const size = level === 2 ? SIZES.h2 : level === 3 ? SIZES.h3 : SIZES.h4;
     const lh = Math.round(size * 1.5);
-    ensureSpace(lh);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(size);
     pdf.setTextColor(...COLORS.body);
-    const wrapped = pdf.splitTextToSize(text, textW);
-    for (const line of wrapped) {
+    const segs = [{ text, bold: true }];
+    const lines = layoutSegmentsIntoLines(segs, textW, size);
+    for (const line of lines) {
       ensureSpace(lh);
-      pdf.text(line, margin, y);
+      let x = margin;
+      for (const part of line) {
+        if (part.fragments) {
+          x = drawFragments(part.fragments, x, y, part, size);
+        } else {
+          pdf.text(part.text, x, y);
+          x += part.width;
+        }
+      }
       y += lh;
     }
     y += 4;
@@ -414,10 +687,19 @@ async function generatePDF(article) {
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(SIZES.title);
   pdf.setTextColor(...COLORS.body);
-  const titleLines = pdf.splitTextToSize(article.title, textW);
+  const titleSegs = [{ text: article.title, bold: true }];
+  const titleLines = layoutSegmentsIntoLines(titleSegs, textW, SIZES.title);
   for (const line of titleLines) {
     ensureSpace(Math.round(SIZES.title * 1.6));
-    pdf.text(line, margin, y);
+    let x = margin;
+    for (const part of line) {
+      if (part.fragments) {
+        x = drawFragments(part.fragments, x, y, part, SIZES.title);
+      } else {
+        pdf.text(part.text, x, y);
+        x += part.width;
+      }
+    }
     y += Math.round(SIZES.title * 1.2);
   }
 
@@ -428,10 +710,19 @@ async function generatePDF(article) {
     pdf.setFont("helvetica", "italic");
     pdf.setFontSize(SIZES.subtitle);
     pdf.setTextColor(...COLORS.muted);
-    const subLines = pdf.splitTextToSize(article.subtitle.trim(), textW);
+    const subSegs = [{ text: article.subtitle.trim(), italic: true }];
+    const subLines = layoutSegmentsIntoLines(subSegs, textW, SIZES.subtitle);
     for (const line of subLines) {
       ensureSpace(lh);
-      pdf.text(line, margin, y);
+      let x = margin;
+      for (const part of line) {
+        if (part.fragments) {
+          x = drawFragments(part.fragments, x, y, part, SIZES.subtitle);
+        } else {
+          pdf.text(part.text, x, y);
+          x += part.width;
+        }
+      }
       y += lh;
     }
   }
@@ -450,7 +741,23 @@ async function generatePDF(article) {
   if (article.publishedDate) metaParts.push(article.publishedDate);
   if (metaParts.length) {
     ensureSpace(Math.round(SIZES.meta * 1.6));
-    pdf.text(metaParts.join("  •  "), centerX, y, { align: "center" });
+    const txt = metaParts.join("  •  ");
+    // Center align with emoji-aware layout
+    const segs = [{ text: txt }];
+    const lines = layoutSegmentsIntoLines(segs, textW, SIZES.meta);
+    for (const line of lines) {
+      let totalWidth = 0;
+      for (const part of line) totalWidth += part.width;
+      let x = margin + (textW - totalWidth) / 2;
+      for (const part of line) {
+        if (part.fragments) {
+          x = drawFragments(part.fragments, x, y, part, SIZES.meta);
+        } else {
+          pdf.text(part.text, x, y);
+          x += part.width;
+        }
+      }
+    }
     y += 18;
   }
 
@@ -458,7 +765,29 @@ async function generatePDF(article) {
   if (article.canonicalUrl) {
     ensureSpace(Math.round(SIZES.meta * 1.6));
     pdf.setTextColor(...COLORS.link);
-    pdf.textWithLink(article.canonicalUrl, centerX, y, { align: "center", url: article.canonicalUrl });
+    const urlTxt = article.canonicalUrl;
+    const segs = [{ text: urlTxt, link: article.canonicalUrl }];
+    const lines = layoutSegmentsIntoLines(segs, textW, SIZES.meta);
+    for (const line of lines) {
+      let totalWidth = 0;
+      for (const part of line) totalWidth += part.width;
+      let x = margin + (textW - totalWidth) / 2;
+      for (const part of line) {
+        if (part.fragments) {
+          const startX = x;
+          x = drawFragments(part.fragments, x, y, part, SIZES.meta);
+          const lw = x - startX;
+          if (lw > 0) {
+            const ascent = Math.round(SIZES.meta * 0.8);
+            const height = Math.max(8, Math.round(SIZES.meta * 1.2));
+            pdf.link(startX, y - ascent, lw, height, { url: article.canonicalUrl });
+          }
+        } else {
+          pdf.textWithLink(part.text, x, y, { url: article.canonicalUrl });
+          x += part.width;
+        }
+      }
+    }
     y += 18;
   }
 
@@ -524,7 +853,7 @@ async function generatePDF(article) {
     pdf.setFontSize(SIZES.h3);
     pdf.setTextColor(...COLORS.body);
     ensureSpace(Math.round(SIZES.h3 * 1.5));
-    pdf.text("Other mentions by Author", margin, y);
+    drawTextWithEmojis("Other mentions by Author", margin, y, { bold: true, italic: false, mono: false }, SIZES.h3);
     y += Math.round(SIZES.h3 * 1.6);
 
     // Render: "domain | title" as a single clickable line per mention
