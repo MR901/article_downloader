@@ -212,7 +212,23 @@ gh auth login
 export GITHUB_TOKEN=your_personal_access_token_here
 ```
 
-#### 2. **Create a Release**
+#### 2. **Create and push a Git tag**
+```bash
+# If the repository has moved/been renamed, update origin
+git remote set-url origin git@github.com:MR901/articledoc.git
+
+# Create an annotated tag from version in manifest.json
+VERSION=$(sed -n 's/.*"version": *"\([^"\n]*\)".*/\1/p' manifest.json)
+git tag -a "v$VERSION" -m "Release v$VERSION"
+
+# Push just this tag
+git push origin "v$VERSION"
+
+# Or push all tags
+git push origin --tags
+```
+
+#### 3. **Create a Release**
 ```bash
 # Build and release automatically
 make release
@@ -225,7 +241,7 @@ gh release create v0.1.0 \
   web-ext-artifacts/articledoc-0.1.0.zip
 ```
 
-#### 3. **Share Your Release**
+#### 4. **Share Your Release**
 Once created, you'll get a permanent link like:
 ```
 https://github.com/MR901/articledoc/releases/tag/v0.1.0
