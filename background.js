@@ -1,4 +1,4 @@
-// Background service worker (Manifest V3)
+// Background script (Manifest V2)
 // Minimal: popup handles PDF generation; content script handles extraction.
 
 chrome.runtime.onInstalled.addListener(() => {

@@ -1,7 +1,7 @@
 # ArticleDoc - Browser Extension Makefile
 # Build, test, and manage the ArticleDoc Firefox extension
 
-.PHONY: help build package clean install serve test lint version-bump release release-notes
+.PHONY: help build package clean install serve test lint version-bump release release-notes sign-listed sign-unlisted source-zip
 
 # Default target
 help: ## Show this help message
@@ -16,9 +16,12 @@ build: ## Build the extension package using web-ext
 	@echo "Creating extension package..."
 	@command -v web-ext >/dev/null 2>&1 || { echo "web-ext is not installed. Run: npm install -g web-ext"; exit 1; }
 	@web-ext build --overwrite-dest
-	@if [ -f "web-ext-artifacts/articledoc-0.1.0.zip" ]; then \
+	@VERSION=$$(grep '"version"' manifest.json | cut -d'"' -f4); \
+	NAME=$$(grep '"name"' manifest.json | cut -d'"' -f4 | tr ' ' '-' | tr '[:upper:]' '[:lower:]'); \
+	ARTIFACT="web-ext-artifacts/$$NAME-$$VERSION.zip"; \
+	if [ -f "$$ARTIFACT" ]; then \
 		echo "Extension built successfully!"; \
-		echo "Package location: web-ext-artifacts/articledoc-0.1.0.zip"; \
+		echo "Package location: $$ARTIFACT"; \
 		echo ""; \
 		echo "Distribution page: distribution.html"; \
 		echo "README: README.md"; \
@@ -44,7 +47,10 @@ clean: ## Remove build artifacts and temporary files
 # Install extension in Firefox for testing
 install: build ## Build and install extension in Firefox (requires Firefox to be running)
 	@echo "Installing extension in Firefox..."
-	@if [ -f "web-ext-artifacts/articledoc-0.1.0.zip" ]; then \
+	@VERSION=$$(grep '"version"' manifest.json | cut -d'"' -f4); \
+	NAME=$$(grep '"name"' manifest.json | cut -d'"' -f4 | tr ' ' '-' | tr '[:upper:]' '[:lower:]'); \
+	ARTIFACT="web-ext-artifacts/$$NAME-$$VERSION.zip"; \
+	if [ -f "$$ARTIFACT" ]; then \
 		web-ext run --source-dir=. --firefox-profile=dev-edition-default; \
 	else \
 		echo "No built extension found. Run 'make build' first."; \
@@ -153,3 +159,48 @@ check-deps: ## Check if required tools are installed
 
 # Default target when just running 'make'
 .DEFAULT_GOAL := help
+
+# Create AMO source ZIP with human-readable sources and documentation
+source-zip: ## Package human-readable source for AMO (includes SOURCE_SUBMISSION.md)
+	@echo "Creating source code archive for AMO..."
+	@VERSION=$$(grep '"version"' manifest.json | cut -d'"' -f4); \
+	NAME=$$(grep '"name"' manifest.json | cut -d'"' -f4 | tr ' ' '-' | tr '[:upper:]' '[:lower:]'); \
+	mkdir -p web-ext-artifacts; \
+	ZIP=web-ext-artifacts/$$NAME-source-$$VERSION.zip; \
+	zip -r -q "$$ZIP" \
+		manifest.json \
+		README.md \
+		SOURCE_SUBMISSION.md \
+		Makefile \
+		background.js \
+		content.js \
+		popup.html \
+		popup.js \
+		libs/jspdf.umd.min.js \
+		icons/icon-48.png \
+		icons/icon-128.png; \
+	echo "Created $$ZIP"
+
+# Sign and submit to AMO (Listed channel)
+sign-listed: ## Build, sign, and submit to AMO (listed channel)
+	@echo "Signing (listed) with AMO..."
+	@command -v web-ext >/dev/null 2>&1 || { echo "web-ext is not installed. Run: npm install -g web-ext"; exit 1; }
+	@if [ -z "$$AMO_JWT_ISSUER" ] || [ -z "$$AMO_JWT_SECRET" ]; then \
+		echo "Set AMO_JWT_ISSUER and AMO_JWT_SECRET environment variables"; \
+		echo "  Get credentials at: https://addons.mozilla.org/developers/addons/api/key/"; \
+		exit 1; \
+	fi
+	@web-ext sign --channel=listed --api-key="$$AMO_JWT_ISSUER" --api-secret="$$AMO_JWT_SECRET"
+	@echo "If successful, AMO will create/attach a listing and start review."
+
+# Sign for self-distribution (Unlisted channel)
+sign-unlisted: ## Build and sign for self-distribution (unlisted channel)
+	@echo "Signing (unlisted) for self-distribution..."
+	@command -v web-ext >/dev/null 2>&1 || { echo "web-ext is not installed. Run: npm install -g web-ext"; exit 1; }
+	@if [ -z "$$AMO_JWT_ISSUER" ] || [ -z "$$AMO_JWT_SECRET" ]; then \
+		echo "Set AMO_JWT_ISSUER and AMO_JWT_SECRET environment variables"; \
+		echo "  Get credentials at: https://addons.mozilla.org/developers/addons/api/key/"; \
+		exit 1; \
+	fi
+	@web-ext sign --channel=unlisted --api-key="$$AMO_JWT_ISSUER" --api-secret="$$AMO_JWT_SECRET"
+	@echo "Signed XPI will be available from the AMO signing response."

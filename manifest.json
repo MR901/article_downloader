@@ -1,8 +1,15 @@
 {
   "manifest_version": 2,
   "name": "ArticleDoc",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Extract articles into clean, readable PDFs with images.",
+  "author": "ArticleDoc",
+  "homepage_url": "https://github.com/MR901/articledoc",
+  "browser_specific_settings": {
+    "gecko": {
+      "strict_min_version": "109.0"
+    }
+  },
   "permissions": [
     "activeTab",
     "downloads",

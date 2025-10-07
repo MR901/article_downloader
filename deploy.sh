@@ -11,10 +11,14 @@ echo "Building ArticleDoc Extension..."
 echo "Building extension package..."
 web-ext build --overwrite-dest
 
-# Check if build was successful
-if [ -f "web-ext-artifacts/articledoc-0.1.0.zip" ]; then
+# Check if build was successful (dynamic artifact name)
+VERSION=$(grep '"version"' manifest.json | cut -d '"' -f4)
+NAME=$(grep '"name"' manifest.json | cut -d '"' -f4 | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
+ARTIFACT="web-ext-artifacts/${NAME}-${VERSION}.zip"
+
+if [ -f "$ARTIFACT" ]; then
     echo "Extension built successfully!"
-    echo "Package location: web-ext-artifacts/articledoc-0.1.0.zip"
+    echo "Package location: $ARTIFACT"
     echo ""
     echo "Distribution page: distribution.html"
     echo "README: README.md"
