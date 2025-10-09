@@ -10,61 +10,84 @@ function updateStatus(message, type = "info") {
 const convertBtn = document.getElementById("convert");
 
 convertBtn.addEventListener("click", async () => {
-  console.log("[popup] Generate Clean PDF clicked");
+  console.group("🚀 PDF Generation Process");
+  console.log("📋 Generate Clean PDF clicked");
+  const overallStartTime = performance.now();
+
   try {
     convertBtn.disabled = true;
     updateStatus("Locating active tab…");
+
+    console.group("🔍 Tab & Communication Setup");
     const tabs = await queryTabs({ active: true, currentWindow: true });
     const tab = tabs && tabs[0];
     if (!tab) {
-      console.error("[popup] No active tab found");
+      console.error("❌ No active tab found");
       updateStatus("No active tab found", "error");
       convertBtn.disabled = false;
+      console.groupEnd();
+      console.groupEnd();
       return;
     }
+    console.log("✅ Active tab found:", { id: tab.id, title: tab.title?.substring(0, 50) + '...' });
+    console.groupEnd();
 
     updateStatus("Extracting article…");
+    console.group("📄 Article Extraction");
     const t0 = performance.now();
     const article = await sendMessageToTab(tab.id, { action: "extractMediumArticle" });
     const t1 = performance.now();
+
     // Expose for debugging from popup DevTools
     try { window.__lastArticle = article; } catch (_) {}
-    console.log("[popup] Article response (ms):", Math.round(t1 - t0));
-    try {
-      if (article && !article.error) {
-        const lastBlock = (article.blocks || [])[Math.max(0, (article.blocks || []).length - 1)] || null;
-        const summary = {
-          url: article.canonicalUrl,
-          title: article.title,
-          blocks: (article.blocks || []).length,
-          lastBlockHeading: lastBlock && lastBlock.heading ? lastBlock.heading : null,
-          lastBlockLevel: lastBlock && lastBlock.level ? lastBlock.level : null,
-          lastBlockTypes: lastBlock && lastBlock.content ? lastBlock.content.map(i => i.type) : []
-        };
-        console.log("[popup] Article summary:", summary);
-      }
-    } catch (_) {}
+    console.log(`⏱️ Extraction time: ${(t1 - t0).toFixed(2)}ms`);
 
     if (!article || article.error) {
       const reason = (article && article.error) || "Unknown error";
-      console.error("[popup] Extraction failed:", reason);
+      console.error("❌ Article extraction failed:", reason);
       updateStatus("Failed to extract article: " + reason, "error");
       convertBtn.disabled = false;
+      console.groupEnd();
+      console.groupEnd();
       return;
     }
 
+    console.log("✅ Article extracted successfully");
+    try {
+      const summary = {
+        title: article.title?.substring(0, 50) + (article.title && article.title.length > 50 ? '...' : ''),
+        url: article.canonicalUrl,
+        blocks: (article.blocks || []).length,
+        author: article.author,
+        mentions: (article.mentions || []).length,
+        publishedDate: article.publishedDate,
+        readingTime: article.readingTimeMinutes
+      };
+      console.table([summary]);
+    } catch (error) {
+      console.warn("⚠️ Could not generate summary table:", error.message);
+    }
+    console.groupEnd();
+
     updateStatus("Generating PDF…");
+    console.group("📕 PDF Generation");
     const t2 = performance.now();
     await generatePDF(article);
     const t3 = performance.now();
-    console.log("[popup] PDF time (ms):", Math.round(t3 - t2), "total (ms):", Math.round(t3 - t0));
-    console.log("[popup] PDF generated successfully");
+    console.log(`⏱️ PDF generation time: ${(t3 - t2).toFixed(2)}ms`);
+    console.log(`⏱️ Total process time: ${(t3 - overallStartTime).toFixed(2)}ms`);
+    console.groupEnd();
+
     updateStatus("PDF saved.", "success");
     convertBtn.disabled = false;
+    console.log("✅ PDF generation completed successfully");
+    console.groupEnd();
+
   } catch (err) {
-    console.error("[popup] Unhandled error:", err);
+    console.error("💥 Unhandled error in PDF generation:", err);
     updateStatus("Error: " + (err && err.message ? err.message : String(err)), "error");
     convertBtn.disabled = false;
+    console.groupEnd();
   }
 });
 

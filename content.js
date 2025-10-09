@@ -5,14 +5,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   console.log("[content] onMessage:", msg);
   if (msg.action === "extractMediumArticle") {
-    console.log("[content] Extracting article with formatting...");
+    console.group("🔍 Article Extraction Process");
+    console.log("📄 Starting article extraction...");
+    const startTime = performance.now();
+
     const host = String(location.hostname || "");
     const isAllowed = /(^|\.)medium\.com$/i.test(host)
       || /^blog\.stackademic\.com$/i.test(host)
       || /^towardsdatascience\.com$/i.test(host);
-    if (!isAllowed) return sendResponse({ error: "Unsupported site" });
+    if (!isAllowed) {
+      console.warn("❌ Unsupported site:", host);
+      console.groupEnd();
+      return sendResponse({ error: "Unsupported site" });
+    }
+    console.log("✅ Site supported:", host);
 
     function findBestArticleContainerHeuristic() {
+      console.log("🔍 Searching for best article container using heuristics...");
       try {
         const paragraphs = Array.from(document.querySelectorAll("p"));
         const candidateScoreByElement = new Map();
@@ -33,44 +42,73 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         for (const [el, score] of candidateScoreByElement.entries()) {
           if (score > maxScore) { maxScore = score; best = el; }
         }
+        if (best) {
+          console.log("✅ Found container via heuristic:", { tag: best.tagName, score: maxScore });
+        }
         return best || null;
-      } catch (_) {
+      } catch (error) {
+        console.warn("⚠️ Heuristic container search failed:", error.message);
         return null;
       }
     }
 
-    const originalArticle =
-      document.querySelector("article") ||
-      document.querySelector("main article") ||
-      document.querySelector("div[data-test-id=\"post-content\"]") ||
-      document.querySelector("div[data-testid=\"storyContent\"]") ||
-      document.querySelector("section[data-testid=\"storyContent\"]") ||
-      document.querySelector("div[data-testid=\"postContent\"]") ||
-      document.querySelector("div[role=\"main\"] article") ||
-      document.querySelector("main") ||
-      document.querySelector("div[role=\"main\"]") ||
-      (function(){
-        const h1 = document.querySelector("h1");
-        return h1 ? (h1.closest("article, main, section, div") || null) : null;
-      })() ||
-      findBestArticleContainerHeuristic();
-    if (!originalArticle) return sendResponse({ error: "No article found" });
+    console.group("📦 Article Container Selection");
+    const selectors = [
+      "article",
+      "main article",
+      "div[data-test-id=\"post-content\"]",
+      "div[data-testid=\"storyContent\"]",
+      "section[data-testid=\"storyContent\"]",
+      "div[data-testid=\"postContent\"]",
+      "div[role=\"main\"] article",
+      "main",
+      "div[role=\"main\"]",
+      "h1.closest(article, main, section, div)",
+      "findBestArticleContainerHeuristic()"
+    ];
 
-    // Diagnostics: container selection
-    try {
-      const tag = originalArticle.tagName;
-      const cls = (originalArticle.getAttribute("class") || "").split(/\s+/).slice(0, 3).join(" ");
-      console.log("[content] Container:", { tag, class: cls });
-    } catch (_) {}
+    let originalArticle = null;
+    for (let i = 0; i < selectors.length && !originalArticle; i++) {
+      const selector = selectors[i];
+      if (typeof selector === 'string') {
+        originalArticle = document.querySelector(selector);
+        if (originalArticle) {
+          console.log(`✅ Found container via selector ${i + 1}:`, selector);
+          break;
+        }
+      } else {
+        originalArticle = findBestArticleContainerHeuristic();
+        if (originalArticle) break;
+      }
+    }
+
+    if (!originalArticle) {
+      console.error("❌ No article container found");
+      console.groupEnd();
+      console.groupEnd();
+      return sendResponse({ error: "No article found" });
+    }
+
+    // Container details
+    const containerInfo = {
+      tag: originalArticle.tagName,
+      id: originalArticle.id || null,
+      className: (originalArticle.getAttribute("class") || "").substring(0, 100),
+      childCount: originalArticle.children.length,
+      textLength: (originalArticle.textContent || "").length
+    };
+    console.log("📋 Container details:", containerInfo);
+    console.groupEnd();
 
     // Work on a clone to avoid mutating the live DOM
     const article = originalArticle.cloneNode(true);
 
+    console.group("🧹 Content Pruning Phase");
     // Remove clearly irrelevant elements (measure removals)
     const tagPruneSelector = "aside, footer, header, nav, form, script, style, noscript, iframe, svg, button";
     const tagPruneEls = Array.from(article.querySelectorAll(tagPruneSelector));
     for (const el of tagPruneEls) el.remove();
-    console.log("[content] Pruned by tag:", { selector: tagPruneSelector, count: tagPruneEls.length });
+    console.log("🏷️ Pruned by tag:", { selector: tagPruneSelector, count: tagPruneEls.length });
 
     // Remove common Medium noise blocks by class name (be conservative)
     const CLASS_PRUNE_RE = /(^|\b)(promo|responses|metered|recommend|footer|bottom|clap|paywall|signup|response|js-stickyFooter)(\b|$)/i;
@@ -84,7 +122,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         el.remove();
       }
     });
-    console.log("[content] Pruned by class:", { count: removedByClass, sampleClasses: lastFew });
+    console.log("🏷️ Pruned by class:", { count: removedByClass, sampleClasses: lastFew });
+
+    // Show remaining content stats after pruning
+    const remainingElements = article.querySelectorAll("*").length;
+    const remainingTextLength = (article.textContent || "").length;
+    console.log("📊 After pruning:", { elements: remainingElements, textLength: remainingTextLength });
+    console.groupEnd();
     // Keep figure captions for PDF rendering
 
     // --- Metadata helpers ---
@@ -344,16 +388,29 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     function extractMentionsAndPrune(root) {
       const results = [];
       const processed = new Set();
-      const domainRegex = /\b[a-z0-9.-]+\.(?:medium\.com|[a-z]{2,})(?:\b|\s|$)/i;
+      // More specific: only Medium domains for "discover" cards, not general domains like linkedin.com
+      const mediumDomainRegex = /\b[a-z0-9.-]+\.medium\.com(?:\b|\s|$)/i;
 
       // Pass 1: Anchors that visually look like Medium "discover"/card links
       const anchorCards = Array.from(root.querySelectorAll('a[href]')).filter(a => {
-        const txt = (a.innerText || "").trim();
-        if (!txt) return false;
         const hasH2 = !!a.querySelector('h2');
         if (!hasH2) return false;
-        // Require a domain line somewhere inside the anchor text
-        if (!domainRegex.test(txt)) return false;
+
+        // Check for Medium domain in the entire anchor subtree (not just direct text)
+        const anchorText = (a.textContent || "").trim();
+        const hasMediumDomain = mediumDomainRegex.test(anchorText);
+
+        if (!hasMediumDomain) return false;
+
+        // Additional check: look for typical Medium card structure (title + domain)
+        const titleEl = a.querySelector('h2');
+        const title = titleEl ? String(titleEl.innerText || "").trim() : null;
+        if (!title || title.length > 100) return false; // Card titles are usually short
+
+        // Check if this looks like a card container (has the typical Medium card classes)
+        const cardContainer = a.closest('div[class*="q"], div[class*="qn"], div[class*="qt"]');
+        if (!cardContainer) return false;
+
         return true;
       });
 
@@ -365,13 +422,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const subtitle = subtitleEl ? String(subtitleEl.innerText || "").trim() : null;
         const url = normalizeMentionUrl(toAbsoluteUrl(a.getAttribute('href')));
         if (title && url) {
+          console.log("[content] Found mention card (anchor):", { title, url });
           results.push({ title, subtitle, url });
           processed.add(a);
           // Remove the visible card safely without nuking surrounding content
-          let cardRoot = a.parentElement;
-          // Climb to the nearest DIV container but stop at root
-          while (cardRoot && cardRoot !== root && cardRoot.tagName !== 'DIV') {
-            cardRoot = cardRoot.parentElement;
+          let cardRoot = a.closest('div[class*="q"]'); // Look for the card container div
+          if (!cardRoot) {
+            cardRoot = a.parentElement;
+            // Climb to the nearest DIV container but stop at root
+            while (cardRoot && cardRoot !== root && cardRoot.tagName !== 'DIV') {
+              cardRoot = cardRoot.parentElement;
+            }
           }
           let removed = false;
           if (cardRoot && root.contains(cardRoot)) {
@@ -382,25 +443,46 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             if (others.length === 0) {
               cardRoot.remove();
               removed = true;
+              console.log("[content] Removed card container:", cardRoot.className);
             }
           }
-          if (!removed) a.remove();
+          if (!removed) {
+            a.remove();
+            console.log("[content] Removed anchor only");
+          }
         }
       }
 
-      // Pass 2: Fallback for card-like DIVs that weren't wrapped in anchors
+      // Pass 2: Fallback for card-like DIVs that weren't wrapped in anchors (be more conservative)
       const candidates = Array.from(root.querySelectorAll('div')).filter(div => {
         if (processed.has(div)) return false;
+
+        // Look for card-like structure with specific Medium card classes
+        const hasCardClasses = /\b(qn|qo|qp|qq|qr|qs|qt|qu|qv|qw|qx|qy|qz)\b/.test(div.className || '');
+        if (!hasCardClasses) return false;
+
         const hasH2 = !!div.querySelector('h2');
         if (!hasH2) return false;
-        const txt = (div.innerText || '').trim();
-        if (!txt) return false;
-        if (!domainRegex.test(txt)) return false;
+
+        // Check for Medium domain in the entire div subtree
+        const divText = (div.textContent || '').trim();
+        const hasMediumDomain = mediumDomainRegex.test(divText);
+
+        if (!hasMediumDomain) return false;
+
         // Avoid enormous containers (likely the whole article wrapper)
         const childCount = div.children ? div.children.length : 0;
         if (childCount > 20) return false;
         const numH2 = div.querySelectorAll('h2').length;
         if (numH2 > 3) return false;
+
+        // Additional check: look for typical card structure
+        const titleEl = div.querySelector('h2');
+        const title = titleEl ? String(titleEl.innerText || '').trim() : null;
+        if (!title || title.length > 100 || /\b(conclusion|summary|references?|about|author|bio)\b/i.test(title)) {
+          return false; // Skip sections that look like article conclusions or author bios
+        }
+
         return true;
       });
 
@@ -413,6 +495,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const subtitle = subtitleEl ? String(subtitleEl.innerText || '').trim() : null;
         const url = linkEl ? normalizeMentionUrl(toAbsoluteUrl(linkEl.getAttribute('href'))) : null;
         if (title && url) {
+          console.log("[content] Found mention card (div):", { title, url, className: card.className });
           results.push({ title, subtitle, url });
           processed.add(card);
           card.remove();
@@ -425,7 +508,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     function extractMentionsAfterArticle(articleEl) {
       const results = [];
       const seen = new Set();
-      const domainRegex = /\b[a-z0-9.-]+\.(?:medium\.com|[a-z]{2,})(?:\b|\s|$)/i;
+      const mediumDomainRegex = /\b[a-z0-9.-]+\.medium\.com(?:\b|\s|$)/i;
       if (!articleEl || typeof articleEl.getBoundingClientRect !== "function") return results;
 
       let articleBottom = 0;
@@ -444,7 +527,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (!hasH2) return false;
         const txt = (div.innerText || "").trim();
         if (!txt) return false;
-        if (!domainRegex.test(txt)) return false;
+        if (!mediumDomainRegex.test(txt)) return false;
         // Avoid enormous containers
         const childCount = div.children ? div.children.length : 0;
         if (childCount > 12) return false;
@@ -551,13 +634,29 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return { src, width, height };
     })();
 
+    console.group("🔗 Mention Cards Detection & Pruning");
     // --- Extract mentions (link cards) and prune from article ---
     const mentionsInside = extractMentionsAndPrune(article);
     // --- Also capture any similar cards that appear after the article on the page ---
     const mentionsAfter = extractMentionsAfterArticle(originalArticle);
     const mentions = dedupeMentions([...(mentionsInside || []), ...(mentionsAfter || [])]);
-    console.log("[content] Mentions:", { inside: (mentionsInside || []).length, after: (mentionsAfter || []).length, deduped: (mentions || []).length });
+    console.log("📋 Mentions summary:", {
+      inside: (mentionsInside || []).length,
+      after: (mentionsAfter || []).length,
+      deduped: (mentions || []).length
+    });
 
+    if (mentions.length > 0) {
+      console.table(mentions.map((m, i) => ({
+        '#': i + 1,
+        title: (m.title || '').substring(0, 50) + (m.title && m.title.length > 50 ? '...' : ''),
+        url: (m.url || '').substring(0, 50) + (m.url && m.url.length > 50 ? '...' : ''),
+        subtitle: (m.subtitle || '').substring(0, 30) + (m.subtitle && m.subtitle.length > 30 ? '...' : '') || 'N/A'
+      })));
+    }
+    console.groupEnd();
+
+    console.group("🏗️ Content Block Building");
     // --- Walk DOM in order and build blocks (group by headings) ---
     const blocks = [];
     let current = { heading: "", level: 0, content: [] };
@@ -566,6 +665,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       items: { paragraph: 0, list: 0, quote: 0, code: 0, hr: 0, image: 0, caption: 0 },
       headings: { h2: 0, h3: 0, h4: 0, h5: 0, h6: 0 }
     };
+    console.log("🔄 Processing DOM nodes to build content blocks...");
 
     const nodes = Array.from(article.querySelectorAll(
       "h2, h3, h4, h5, h6, p, ul, ol, blockquote, img, figcaption, hr, pre, div[data-selectable-paragraph], span[data-selectable-paragraph]"
@@ -662,16 +762,25 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const tailParagraphs = blocks.slice(-2).flatMap(b => (b.content || [])
       .filter(c => c.type === "paragraph").slice(-2)
       .map(p => (p.segments || []).map(s => s.text).join("")));
-    console.log("[content] Extraction complete:", {
-      title,
+
+    console.group("📊 Extraction Summary");
+    console.log("✅ Extraction completed successfully");
+    console.log("📈 Final statistics:", {
+      title: title?.substring(0, 60) + (title && title.length > 60 ? '...' : ''),
       url: canonicalUrl,
       blocks: stats.blocks,
       headings: stats.headings,
       items: stats.items,
-      lastBlockHeading: lastBlock && lastBlock.heading ? lastBlock.heading : null,
+      lastBlockHeading: lastBlock && lastBlock.heading ? lastBlock.heading.substring(0, 40) + '...' : null,
       lastBlockTypes: lastTypes,
-      tailParagraphs
+      tailParagraphs: tailParagraphs.map(p => p.substring(0, 60) + (p.length > 60 ? '...' : ''))
     });
+
+    const endTime = performance.now();
+    console.log(`⏱️ Total extraction time: ${(endTime - startTime).toFixed(2)}ms`);
+    console.groupEnd();
+    console.groupEnd(); // Close Content Block Building group
+    console.groupEnd(); // Close Article Extraction Process group
 
     sendResponse({ title, subtitle, author, blocks, publishedDate, readingTimeMinutes, canonicalUrl, heroImage, mentions });
   }
