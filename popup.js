@@ -24,8 +24,26 @@ convertBtn.addEventListener("click", async () => {
     }
 
     updateStatus("Extracting article…");
+    const t0 = performance.now();
     const article = await sendMessageToTab(tab.id, { action: "extractMediumArticle" });
-    console.log("[popup] Article response:", article);
+    const t1 = performance.now();
+    // Expose for debugging from popup DevTools
+    try { window.__lastArticle = article; } catch (_) {}
+    console.log("[popup] Article response (ms):", Math.round(t1 - t0));
+    try {
+      if (article && !article.error) {
+        const lastBlock = (article.blocks || [])[Math.max(0, (article.blocks || []).length - 1)] || null;
+        const summary = {
+          url: article.canonicalUrl,
+          title: article.title,
+          blocks: (article.blocks || []).length,
+          lastBlockHeading: lastBlock && lastBlock.heading ? lastBlock.heading : null,
+          lastBlockLevel: lastBlock && lastBlock.level ? lastBlock.level : null,
+          lastBlockTypes: lastBlock && lastBlock.content ? lastBlock.content.map(i => i.type) : []
+        };
+        console.log("[popup] Article summary:", summary);
+      }
+    } catch (_) {}
 
     if (!article || article.error) {
       const reason = (article && article.error) || "Unknown error";
@@ -36,7 +54,10 @@ convertBtn.addEventListener("click", async () => {
     }
 
     updateStatus("Generating PDF…");
+    const t2 = performance.now();
     await generatePDF(article);
+    const t3 = performance.now();
+    console.log("[popup] PDF time (ms):", Math.round(t3 - t2), "total (ms):", Math.round(t3 - t0));
     console.log("[popup] PDF generated successfully");
     updateStatus("PDF saved.", "success");
     convertBtn.disabled = false;
@@ -870,6 +891,7 @@ async function generatePDF(article) {
 
   // --- Content ---
   for (const block of article.blocks) {
+    try { console.log("[popup] Rendering block:", { heading: block.heading || "", level: block.level || 0, items: (block.content || []).length }); } catch (_) {}
     // Heading
     if (block.heading && block.heading.trim()) {
       drawHeading(block.heading.trim(), Number(block.level || 2));
@@ -896,6 +918,8 @@ async function generatePDF(article) {
         }
       } else if (item.type === "caption") {
         drawCaption(item.segments || []);
+      } else {
+        try { console.warn("[popup] Unknown item type skipped:", item && item.type, item); } catch (_) {}
       }
     }
     // subtle spacing between sections

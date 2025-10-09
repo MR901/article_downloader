@@ -56,20 +56,35 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       findBestArticleContainerHeuristic();
     if (!originalArticle) return sendResponse({ error: "No article found" });
 
+    // Diagnostics: container selection
+    try {
+      const tag = originalArticle.tagName;
+      const cls = (originalArticle.getAttribute("class") || "").split(/\s+/).slice(0, 3).join(" ");
+      console.log("[content] Container:", { tag, class: cls });
+    } catch (_) {}
+
     // Work on a clone to avoid mutating the live DOM
     const article = originalArticle.cloneNode(true);
 
-    // Remove clearly irrelevant elements
-    article.querySelectorAll(
-      "aside, footer, header, nav, form, script, style, noscript, iframe, svg, button"
-    ).forEach(el => el.remove());
-    // Remove common Medium noise blocks by class name
+    // Remove clearly irrelevant elements (measure removals)
+    const tagPruneSelector = "aside, footer, header, nav, form, script, style, noscript, iframe, svg, button";
+    const tagPruneEls = Array.from(article.querySelectorAll(tagPruneSelector));
+    for (const el of tagPruneEls) el.remove();
+    console.log("[content] Pruned by tag:", { selector: tagPruneSelector, count: tagPruneEls.length });
+
+    // Remove common Medium noise blocks by class name (be conservative)
+    const CLASS_PRUNE_RE = /(^|\b)(promo|responses|metered|recommend|footer|bottom|clap|paywall|signup|response|js-stickyFooter)(\b|$)/i;
+    let removedByClass = 0;
+    const lastFew = [];
     article.querySelectorAll("div").forEach(el => {
       const className = el.className || "";
-      if (/(promo|responses|metered|recommend|footer|bottom|clap|paywall|notes|signup|response|js-stickyFooter)/i.test(className)) {
+      if (CLASS_PRUNE_RE.test(className)) {
+        removedByClass++;
+        if (lastFew.length < 5) lastFew.push((className || "").toString().split(/\s+/).slice(0, 3).join(" "));
         el.remove();
       }
     });
+    console.log("[content] Pruned by class:", { count: removedByClass, sampleClasses: lastFew });
     // Keep figure captions for PDF rendering
 
     // --- Metadata helpers ---
@@ -352,14 +367,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (title && url) {
           results.push({ title, subtitle, url });
           processed.add(a);
-          // Remove the visible card container to avoid leakage into article content
+          // Remove the visible card safely without nuking surrounding content
           let cardRoot = a.parentElement;
-          // Climb to a DIV container but stop at root
+          // Climb to the nearest DIV container but stop at root
           while (cardRoot && cardRoot !== root && cardRoot.tagName !== 'DIV') {
             cardRoot = cardRoot.parentElement;
           }
-          if (cardRoot && root.contains(cardRoot)) cardRoot.remove();
-          else a.remove();
+          let removed = false;
+          if (cardRoot && root.contains(cardRoot)) {
+            // Only remove the container if it doesn't contain other likely article content outside the anchor
+            const others = Array.from(cardRoot.querySelectorAll(
+              "p, h2, h3, h4, h5, h6, pre, ul, ol, blockquote, img, figcaption, div[data-selectable-paragraph], span[data-selectable-paragraph]"
+            )).filter(n => !a.contains(n));
+            if (others.length === 0) {
+              cardRoot.remove();
+              removed = true;
+            }
+          }
+          if (!removed) a.remove();
         }
       }
 
@@ -531,13 +556,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // --- Also capture any similar cards that appear after the article on the page ---
     const mentionsAfter = extractMentionsAfterArticle(originalArticle);
     const mentions = dedupeMentions([...(mentionsInside || []), ...(mentionsAfter || [])]);
+    console.log("[content] Mentions:", { inside: (mentionsInside || []).length, after: (mentionsAfter || []).length, deduped: (mentions || []).length });
 
     // --- Walk DOM in order and build blocks (group by headings) ---
     const blocks = [];
     let current = { heading: "", level: 0, content: [] };
+    const stats = {
+      blocks: 0,
+      items: { paragraph: 0, list: 0, quote: 0, code: 0, hr: 0, image: 0, caption: 0 },
+      headings: { h2: 0, h3: 0, h4: 0, h5: 0, h6: 0 }
+    };
 
     const nodes = Array.from(article.querySelectorAll(
-      "h2, h3, h4, p, ul, ol, blockquote, img, figcaption, hr, pre, div[data-selectable-paragraph], span[data-selectable-paragraph]"
+      "h2, h3, h4, h5, h6, p, ul, ol, blockquote, img, figcaption, hr, pre, div[data-selectable-paragraph], span[data-selectable-paragraph]"
     ));
     for (const el of nodes) {
       const tag = el.tagName;
@@ -552,14 +583,25 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
         continue;
       }
-      if (/^H[2-4]$/.test(tag)) {
+      if (/^H[2-6]$/.test(tag)) {
         const headingText = el.innerText.trim();
         if (INTRO_HEADING_RE.test(headingText)) {
           // Skip generic "Introduction" headings and keep accumulating content
           continue;
         }
         if (current.content.length) blocks.push(current);
-        current = { heading: headingText, level: Number(tag.substring(1)), content: [] };
+        const lvl = Number(tag.substring(1));
+        current = { heading: headingText, level: lvl, content: [] };
+        try { if (lvl >= 2 && lvl <= 6) stats.headings["h" + lvl]++; } catch (_) {}
+        continue;
+      }
+      // Medium sometimes uses div/span with data-selectable-paragraph as paragraph wrappers
+      if (el.matches && el.matches("div[data-selectable-paragraph], span[data-selectable-paragraph]")) {
+        if (el.closest("blockquote, ul, ol, li, pre, code, figure, figcaption")) {
+          continue;
+        }
+        const para = extractParagraph(el);
+        if (para) current.content.push(para);
         continue;
       }
       if (tag === "P") {
@@ -569,17 +611,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           continue;
         }
         const para = extractParagraph(el);
-        if (para) current.content.push(para);
+        if (para) { current.content.push(para); stats.items.paragraph++; }
         continue;
       }
       if (tag === "UL" || tag === "OL") {
         const lst = extractList(el);
-        if (lst) current.content.push(lst);
+        if (lst) { current.content.push(lst); stats.items.list++; }
         continue;
       }
       if (tag === "BLOCKQUOTE") {
         const qt = extractQuote(el);
-        if (qt) current.content.push(qt);
+        if (qt) { current.content.push(qt); stats.items.quote++; }
         continue;
       }
       if (tag === "PRE") {
@@ -588,30 +630,49 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           const last = current.content[current.content.length - 1];
           if (!(last && last.type === "code" && last.text === cd.text)) {
             current.content.push(cd);
+            stats.items.code++;
           }
         }
         continue;
       }
       if (tag === "HR") {
         current.content.push({ type: "hr" });
+        stats.items.hr++;
         continue;
       }
       if (tag === "IMG") {
         const img = extractImage(el);
-        if (img) current.content.push(img);
+        if (img) { current.content.push(img); stats.items.image++; }
         continue;
       }
       if (tag === "FIGCAPTION") {
         const para = extractParagraph(el);
         if (para && para.segments && para.segments.length) {
           current.content.push({ type: "caption", segments: para.segments });
+          stats.items.caption++;
         }
         continue;
       }
     }
     if (current.content.length) blocks.push(current);
 
-    console.log("[content] Extraction complete. Blocks:", blocks.length);
+    stats.blocks = blocks.length;
+    const lastBlock = blocks[blocks.length - 1] || null;
+    const lastTypes = lastBlock ? (lastBlock.content || []).map(i => i.type) : [];
+    const tailParagraphs = blocks.slice(-2).flatMap(b => (b.content || [])
+      .filter(c => c.type === "paragraph").slice(-2)
+      .map(p => (p.segments || []).map(s => s.text).join("")));
+    console.log("[content] Extraction complete:", {
+      title,
+      url: canonicalUrl,
+      blocks: stats.blocks,
+      headings: stats.headings,
+      items: stats.items,
+      lastBlockHeading: lastBlock && lastBlock.heading ? lastBlock.heading : null,
+      lastBlockTypes: lastTypes,
+      tailParagraphs
+    });
+
     sendResponse({ title, subtitle, author, blocks, publishedDate, readingTimeMinutes, canonicalUrl, heroImage, mentions });
   }
   return true;
