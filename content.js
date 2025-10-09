@@ -1,50 +1,132 @@
+// Enhanced logging utility
+const Logger = {
+  startTime: Date.now(),
+  sessionId: Math.random().toString(36).substr(2, 9),
+
+  log: (message, data = null) => {
+    const timestamp = ((Date.now() - Logger.startTime) / 1000).toFixed(2) + 's';
+    console.log(`[${timestamp}] 🔵 ${message}`, data ? { session: Logger.sessionId, ...data } : { session: Logger.sessionId });
+  },
+
+  warn: (message, data = null) => {
+    const timestamp = ((Date.now() - Logger.startTime) / 1000).toFixed(2) + 's';
+    console.warn(`[${timestamp}] ⚠️ ${message}`, data ? { session: Logger.sessionId, ...data } : { session: Logger.sessionId });
+  },
+
+  error: (message, error = null) => {
+    const timestamp = ((Date.now() - Logger.startTime) / 1000).toFixed(2) + 's';
+    console.error(`[${timestamp}] ❌ ${message}`, {
+      session: Logger.sessionId,
+      error: error?.message || error,
+      stack: error?.stack?.split('\n').slice(0, 3).join('\n')
+    });
+  },
+
+  group: (message) => {
+    console.group(`🔍 ${message}`);
+  },
+
+  groupEnd: () => {
+    console.groupEnd();
+  },
+
+  success: (message, data = null) => {
+    const timestamp = ((Date.now() - Logger.startTime) / 1000).toFixed(2) + 's';
+    console.log(`[${timestamp}] ✅ ${message}`, data ? { session: Logger.sessionId, ...data } : { session: Logger.sessionId });
+  },
+
+  info: (message, data = null) => {
+    const timestamp = ((Date.now() - Logger.startTime) / 1000).toFixed(2) + 's';
+    console.info(`[${timestamp}] ℹ️ ${message}`, data ? { session: Logger.sessionId, ...data } : { session: Logger.sessionId });
+  }
+};
+
+// Performance monitoring
+const PerformanceMonitor = {
+  startTime: performance.now(),
+
+  measure: (label) => {
+    const elapsed = performance.now() - PerformanceMonitor.startTime;
+    Logger.info(`${label} completed`, { duration: `${elapsed.toFixed(2)}ms` });
+    return elapsed;
+  },
+
+  memory: () => {
+    if (performance.memory) {
+      return {
+        used: Math.round(performance.memory.usedJSHeapSize / 1024 / 1024),
+        total: Math.round(performance.memory.totalJSHeapSize / 1024 / 1024),
+        limit: Math.round(performance.memory.jsHeapSizeLimit / 1024 / 1024)
+      };
+    }
+    return null;
+  }
+};
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.type === "ping") {
     sendResponse({ ok: true, scope: "content" });
     return true;
   }
-  console.log("[content] onMessage:", msg);
-  // Support both the new generic action and the legacy Medium-specific action
-  if (msg.action === "extractArticle" || msg.action === "extractMediumArticle") {
-    console.group("🔍 Article Extraction Process");
-    console.log("📄 Starting article extraction...");
+
+  Logger.info("Message received", {
+    action: msg.action,
+    sender: sender?.id,
+    url: location?.href?.substring(0, 100) + '...'
+  });
+  // Support both the new generic action, a forced variant, and the legacy Medium-specific action
+  if (msg.action === "extractArticle" || msg.action === "forceExtractArticle" || msg.action === "extractMediumArticle") {
+    Logger.group("Article Extraction Process");
+    Logger.log("Starting article extraction", {
+      action: msg.action,
+      url: location?.href,
+      hostname: location?.hostname
+    });
     const startTime = performance.now();
 
-    // Provider gating using global registry
-    try {
-      const href = (typeof location !== 'undefined' && location.href) ? location.href : null;
-      const registry = window.__ArticleDocProviderRegistry;
-      const provider = registry && href ? registry.findProviderByUrl(href) : null;
-      if (!provider) {
+    const isForce = msg.action === "forceExtractArticle";
+
+    // Provider gating using global registry (skip when forced)
+    if (!isForce) {
+      try {
+        const href = (typeof location !== 'undefined' && location.href) ? location.href : null;
+        const registry = window.__ArticleDocProviderRegistry;
+        const provider = registry && href ? registry.findProviderByUrl(href) : null;
+        if (!provider) {
+          const host = String(location.hostname || "");
+          Logger.warn("No provider matched", { hostname: host });
+          Logger.info("Using Medium extraction as fallback");
+          // Continue with extraction using Medium logic as fallback
+        } else {
+          // Check allowed action
+          const action = msg.action === "extractMediumArticle" ? "extractArticle" : msg.action;
+          if (!provider.isActionAllowed(action)) {
+            Logger.error("Action not allowed by provider", { provider: provider.id, action });
+            Logger.groupEnd();
+            return sendResponse({ error: "Action not allowed for this site" });
+          }
+          Logger.success("Provider matched", { id: provider.id, name: provider.name });
+        }
+      } catch (_) {
+        // If registry not available for some reason, continue with legacy allowlist (backward compat)
         const host = String(location.hostname || "");
-        console.warn("❌ No provider matched:", host);
-        console.groupEnd();
-        return sendResponse({ error: "Unsupported site" });
+        const isAllowed = /(^|\.)medium\.com$/i.test(host)
+          || /^blog\.stackademic\.com$/i.test(host)
+          || /^towardsdatascience\.com$/i.test(host);
+        if (!isAllowed) {
+          Logger.warn("No provider matched (legacy)", { hostname: host });
+          Logger.info("Using Medium extraction as fallback");
+          // Continue with extraction using Medium logic as fallback
+        } else {
+          Logger.success("Site supported (fallback allowlist)", { hostname: host });
+        }
       }
-      // Check allowed action
-      const action = msg.action === "extractMediumArticle" ? "extractArticle" : msg.action;
-      if (!provider.isActionAllowed(action)) {
-        console.warn("❌ Action not allowed by provider:", { provider: provider.id, action });
-        console.groupEnd();
-        return sendResponse({ error: "Action not allowed for this site" });
-      }
-      console.log("✅ Provider matched:", { id: provider.id, name: provider.name });
-    } catch (_) {
-      // If registry not available for some reason, continue with legacy allowlist (backward compat)
-      const host = String(location.hostname || "");
-      const isAllowed = /(^|\.)medium\.com$/i.test(host)
-        || /^blog\.stackademic\.com$/i.test(host)
-        || /^towardsdatascience\.com$/i.test(host);
-      if (!isAllowed) {
-        console.warn("❌ Unsupported site:", host);
-        console.groupEnd();
-        return sendResponse({ error: "Unsupported site" });
-      }
-      console.log("✅ Site supported (fallback allowlist):", host);
+    } else {
+      Logger.info("Force extraction requested: using Medium logic as fallback");
     }
 
     function findBestArticleContainerHeuristic() {
-      console.log("🔍 Searching for best article container using heuristics...");
+      Logger.log("Searching for best article container using heuristics");
       try {
         const paragraphs = Array.from(document.querySelectorAll("p"));
         const candidateScoreByElement = new Map();
@@ -66,16 +148,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           if (score > maxScore) { maxScore = score; best = el; }
         }
         if (best) {
-          console.log("✅ Found container via heuristic:", { tag: best.tagName, score: maxScore });
+          Logger.success("Found container via heuristic", { tag: best.tagName, score: maxScore });
         }
         return best || null;
       } catch (error) {
-        console.warn("⚠️ Heuristic container search failed:", error.message);
+        Logger.warn("Heuristic container search failed", { error: error.message });
         return null;
       }
     }
 
-    console.group("📦 Article Container Selection");
+    Logger.group("Article Container Selection");
     const selectors = [
       "article",
       "main article",
@@ -96,7 +178,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (typeof selector === 'string') {
         originalArticle = document.querySelector(selector);
         if (originalArticle) {
-          console.log(`✅ Found container via selector ${i + 1}:`, selector);
+          Logger.success(`Found container via selector ${i + 1}`, { selector });
           break;
         }
       } else {
@@ -106,9 +188,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     if (!originalArticle) {
-      console.error("❌ No article container found");
-      console.groupEnd();
-      console.groupEnd();
+      Logger.error("No article container found");
+      Logger.groupEnd();
+      Logger.groupEnd();
       return sendResponse({ error: "No article found" });
     }
 
@@ -120,18 +202,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       childCount: originalArticle.children.length,
       textLength: (originalArticle.textContent || "").length
     };
-    console.log("📋 Container details:", containerInfo);
-    console.groupEnd();
+    Logger.info("Container details", containerInfo);
+    Logger.groupEnd();
 
     // Work on a clone to avoid mutating the live DOM
     const article = originalArticle.cloneNode(true);
 
-    console.group("🧹 Content Pruning Phase");
+    Logger.group("Content Pruning Phase");
     // Remove clearly irrelevant elements (measure removals)
     const tagPruneSelector = "aside, footer, header, nav, form, script, style, noscript, iframe, svg, button";
     const tagPruneEls = Array.from(article.querySelectorAll(tagPruneSelector));
     for (const el of tagPruneEls) el.remove();
-    console.log("🏷️ Pruned by tag:", { selector: tagPruneSelector, count: tagPruneEls.length });
+    Logger.info("Pruned by tag", { selector: tagPruneSelector, count: tagPruneEls.length });
 
     // Remove common Medium noise blocks by class name (be conservative)
     const CLASS_PRUNE_RE = /(^|\b)(promo|responses|metered|recommend|footer|bottom|clap|paywall|signup|response|js-stickyFooter)(\b|$)/i;
@@ -145,13 +227,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         el.remove();
       }
     });
-    console.log("🏷️ Pruned by class:", { count: removedByClass, sampleClasses: lastFew });
+    Logger.info("Pruned by class", { count: removedByClass, sampleClasses: lastFew });
 
     // Show remaining content stats after pruning
     const remainingElements = article.querySelectorAll("*").length;
     const remainingTextLength = (article.textContent || "").length;
-    console.log("📊 After pruning:", { elements: remainingElements, textLength: remainingTextLength });
-    console.groupEnd();
+    Logger.info("After pruning", { elements: remainingElements, textLength: remainingTextLength });
+    Logger.groupEnd();
     // Keep figure captions for PDF rendering
 
     // --- Metadata helpers ---
@@ -397,6 +479,28 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (!href) return null;
       try {
         const u = new URL(href, location.href);
+
+        // Unwrap common redirectors before stripping query params
+        // Medium redirector: https://medium.com/r/?url=<target>
+        try {
+          const host = String(u.hostname || "").toLowerCase();
+          const path = String(u.pathname || "");
+          if ((/(^|\.)medium\.com$/i.test(host) && /^\/r\//.test(path)) || (/^\/redirect$/i.test(path))) {
+            const inner = u.searchParams.get('url') || u.searchParams.get('to');
+            if (inner) return normalizeMentionUrl(inner);
+          }
+          // Google redirector: https://www.google.com/url?q=<target>
+          if (/(^|\.)google\.com$/i.test(host) && /^\/url$/i.test(path)) {
+            const q = u.searchParams.get('q');
+            if (q) return normalizeMentionUrl(q);
+          }
+          // AMP canonical: https://amp.<domain>/<...> or /amp/s/<domain>/<...>
+          if (/^\/amp\/s\//i.test(path)) {
+            const rest = path.replace(/^\/amp\/s\//i, "");
+            return normalizeMentionUrl('https://' + rest);
+          }
+        } catch (_) {}
+
         // Strip tracking parameters and hash fragments universally
         u.search = "";
         u.hash = "";
@@ -405,6 +509,33 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const s = String(href);
         const noHash = s.split("#")[0];
         return noHash.split("?")[0];
+      }
+    }
+
+    function canonicalizeUrlForDedupe(href) {
+      if (!href) return null;
+      try {
+        const u = new URL(href, location.href);
+        let protocol = 'https:'; // normalize to https
+        let host = String(u.hostname || '').toLowerCase();
+        if (host.startsWith('www.')) host = host.substring(4);
+        // Remove default ports
+        let port = u.port ? String(u.port) : '';
+        if ((protocol === 'https:' && port === '443') || (protocol === 'http:' && port === '80')) port = '';
+        // Normalize path: collapse multiple slashes, remove trailing slash, lowercase for stability
+        let path = String(u.pathname || '/').replace(/\/+/g, '/');
+        // decode percent-encodings where safe
+        try { path = decodeURIComponent(path); } catch (_) {}
+        path = path.replace(/\/+/g, '/');
+        if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
+        // Many servers are case-sensitive, but for dedupe we prefer forgiving normalization
+        path = path;
+        // Build canonical string without query/hash
+        return protocol + '//' + host + (port ? (':' + port) : '') + path;
+      } catch (_) {
+        // Fallback: basic trimming and www normalization
+        const s = String(href).trim();
+        return s.replace(/^https?:\/\//i, 'https://').replace(/^(https:\/\/)?www\./i, '$1').replace(/\/$/, '');
       }
     }
 
@@ -417,9 +548,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
       // Detect if an element has the characteristic Medium card structure
       hasCardStructure(element) {
-        // Check for the typical Medium card classes
-        const cardClasses = /\b(qn|qo|qp|qq|qr|qs|qt|qu|qv|qw|qx|qy|qz|ra|rb|rc|rd|re|rf)\b/;
-        return cardClasses.test(element.className || '');
+        // Check for the typical Medium card classes (obfuscated q* classnames and r*)
+        const className = String(element.className || "");
+        const cardClasses = /\bq[a-z]\b|\br[a-z]\b/; // broader match for obfuscated Medium classes like qd, qi, qv, qw, qx, qy, qz, ra, etc.
+        if (cardClasses.test(className)) return true;
+
+        // Fallback: structural detection — a link card usually has an <a> with an <h2> (title)
+        // and optionally an <h3> (subtitle) and a <p> (domain) somewhere inside
+        const hasAnchorWithH2 = !!element.querySelector('a[href] h2');
+        if (hasAnchorWithH2) return true;
+
+        // Or at least both an anchor and an h2 within the same container
+        const hasAnchor = !!element.querySelector('a[href]');
+        const hasH2 = !!element.querySelector('h2');
+        if (hasAnchor && hasH2) return true;
+
+        return false;
       }
 
       // Extract card information from an anchor element
@@ -435,9 +579,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const domain = domainEl ? String(domainEl.innerText || '').trim() : null;
         const url = normalizeMentionUrl(toAbsoluteUrl(anchor.getAttribute('href')));
 
+        // Skip discovery/recirculation anchors and post preview widgets
+        try {
+          if (anchor.hasAttribute && anchor.hasAttribute('data-discover')) return null;
+          const href = anchor.getAttribute && anchor.getAttribute('href');
+          if (href && /(author_recirc|read_next_recirc|post_responses)/i.test(String(href))) return null;
+          if (anchor.closest && anchor.closest('[data-testid="post-preview"]')) return null;
+        } catch (_) {}
+
         if (title && url) {
           const card = { title, subtitle, domain, url };
-          console.log("[content] Found mention card (anchor):", card);
+          Logger.info("Found mention card (anchor)", card);
           this.results.push(card);
           this.processedElements.add(anchor);
           return card;
@@ -467,12 +619,31 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           return null;
         }
 
+        // Skip Medium's built-in sections that aren't actual "mentions by author"
+        if (/\bmore from\s+\w+\b/i.test(title)) {
+          return null; // Skip "More from [Author]" sections
+        }
+        if (/\brecommended from medium\b/i.test(title)) {
+          return null; // Skip "Recommended from Medium" sections
+        }
+
+        // Skip known post preview containers and recirculation anchors
+        try {
+          if (div.getAttribute && div.getAttribute('data-testid') === 'post-preview') return null;
+          if (div.closest && div.closest('[data-testid="post-preview"]')) return null;
+          if (linkEl) {
+            if (linkEl.hasAttribute && linkEl.hasAttribute('data-discover')) return null;
+            const href = linkEl.getAttribute && linkEl.getAttribute('href');
+            if (href && /(author_recirc|read_next_recirc|post_responses)/i.test(String(href))) return null;
+          }
+        } catch (_) {}
+
         // Avoid enormous containers (likely the whole article wrapper)
         const childCount = div.children ? div.children.length : 0;
         if (childCount > 20) return null;
 
         const card = { title, subtitle, domain, url };
-        console.log("[content] Found mention card (div):", { ...card, className: div.className });
+        Logger.info("Found mention card (div)", { ...card, className: div.className });
         this.results.push(card);
         this.processedElements.add(div);
         return card;
@@ -514,7 +685,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         this.results = [];
         this.processedElements = new Set();
 
-        // Pass 1: Detect cards by their characteristic structure
+        // Pass 1: Detect cards by their characteristic structure (div containers)
         const cardContainers = Array.from(root.querySelectorAll('div')).filter(div =>
           this.hasCardStructure(div) && div.querySelector('h2')
         );
@@ -538,6 +709,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           }
         }
 
+        // Pass 2: Anchor-first detection for cases where the anchor itself is the card root
+        // Example: <div class="..."><a href="..."><div> <h2>...</h2> <h3>...</h3> <p>domain</p> ... </div></a></div>
+        const anchorCandidates = Array.from(root.querySelectorAll('a[href]')).filter(a => a.querySelector('h2'));
+        for (const a of anchorCandidates) {
+          if (this.processedElements.has(a)) continue;
+          const card = this.extractFromAnchor(a);
+          if (card) {
+            this.removeCard(a, root);
+          }
+        }
+
         return this.results;
       }
     }
@@ -553,6 +735,44 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const results = [];
       if (!articleEl || typeof articleEl.getBoundingClientRect !== "function") return results;
 
+      function isInResponsesArea(node) {
+        try {
+          let cur = node;
+          let steps = 0;
+          while (cur && cur !== document.body && steps < 12) {
+            steps++;
+            const cls = String(cur.className || "");
+            const testid = (cur.getAttribute && cur.getAttribute('data-testid')) || "";
+            const ariaLabel = (cur.getAttribute && cur.getAttribute('aria-label')) || "";
+            // Class or attributes indicating responses/comments
+            if (/\b(responses?|comments?|post_responses)\b/i.test(cls)) return true;
+            if (/responses?/i.test(String(testid))) return true;
+            if (/responses?/i.test(String(ariaLabel))) return true;
+            // A nearby heading explicitly saying "Responses (...)"
+            const h2 = cur.querySelector && (cur.querySelector(':scope > h2') || cur.querySelector('h2'));
+            const h2Text = h2 ? String(h2.innerText || '').trim() : '';
+            if (/^responses\s*\(/i.test(h2Text)) return true;
+            cur = cur.parentElement;
+          }
+        } catch (_) {}
+        return false;
+      }
+
+      function hasRecirculationMarker(href) {
+        if (!href) return false;
+        try {
+          const raw = String(href);
+          // Medium appends source markers for various recirculation widgets
+          if (/(post_responses|author_recirc|read_next_recirc)/i.test(raw)) return true;
+          const u = new URL(href, location.href);
+          const search = String(u.search || "");
+          if (/(post_responses|author_recirc|read_next_recirc)/i.test(search)) return true;
+          return false;
+        } catch (_) {
+          return /(post_responses|author_recirc|read_next_recirc)/i.test(String(href));
+        }
+      }
+
       let articleBottom = 0;
       try {
         articleBottom = articleEl.getBoundingClientRect().bottom;
@@ -560,49 +780,83 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         articleBottom = 0;
       }
 
-      const candidates = Array.from(document.querySelectorAll("div")).filter(div => {
+      // Collect div-based candidates (structural or class-based)
+      const divCandidates = Array.from(document.querySelectorAll("div")).filter(div => {
         if (!div) return false;
-        // Skip anything within the article itself (those are handled by extractMentionsAndPrune)
-        if (articleEl.contains(div)) return false;
-
-        // Check if it has the card structure
+        if (articleEl.contains(div)) return false; // inside-article handled elsewhere
+        if (isInResponsesArea(div)) return false; // exclude comment/response areas
+        // Exclude known recirculation container types
+        if (div.getAttribute && div.getAttribute('data-testid') === 'post-preview') return false;
         if (!cardDetector.hasCardStructure(div)) return false;
-
-        // Title presence: either direct h2 or nested h2
         const hasH2 = !!div.querySelector(":scope > h2") || !!div.querySelector("h2");
         if (!hasH2) return false;
-
         const txt = (div.innerText || "").trim();
         if (!txt) return false;
-
-        // Avoid enormous containers
         const childCount = div.children ? div.children.length : 0;
-        if (childCount > 12) return false;
-
-        // Only consider elements that render below the bottom of the article
+        if (childCount > 20) return false;
         let top = 0;
         try { top = div.getBoundingClientRect().top; } catch (_) { top = 0; }
         if (top <= articleBottom) return false;
-
-        // Avoid sticky/fixed overlays
         const style = window.getComputedStyle(div);
         if (style && (style.position === "fixed" || style.position === "sticky")) return false;
-
         return true;
       });
+
+      // Collect anchor-based candidates directly (for wrappers where only the <a> has the card structure)
+      const anchorCandidates = Array.from(document.querySelectorAll('a[href]')).filter(a => {
+        if (!a) return false;
+        if (articleEl.contains(a)) return false;
+        if (isInResponsesArea(a)) return false; // exclude responses/comments
+        if (!a.querySelector('h2')) return false;
+        // Exclude discovery/recirc links
+        if (a.hasAttribute('data-discover')) return false;
+        if (hasRecirculationMarker(a.getAttribute('href'))) return false;
+        // Must be visually after article
+        let top = 0;
+        try { top = a.getBoundingClientRect().top; } catch (_) { top = 0; }
+        if (top <= articleBottom) return false;
+        // Not sticky/fixed
+        const style = window.getComputedStyle(a);
+        if (style && (style.position === 'fixed' || style.position === 'sticky')) return false;
+        return true;
+      });
+
+      const candidates = [...divCandidates, ...anchorCandidates];
 
       for (const card of candidates) {
         if (cardDetector.processedElements.has(card)) continue;
 
         const titleEl = card.querySelector(":scope > h2") || card.querySelector("h2");
         const subtitleEl = card.querySelector("h3");
-        const linkEl = card.querySelector("a[href]");
+        const linkEl = card.tagName === 'A' ? card : card.querySelector("a[href]");
         const domainEl = card.querySelector("p");
 
         const title = titleEl ? String(titleEl.innerText || "").trim() : null;
         const subtitle = subtitleEl ? String(subtitleEl.innerText || "").trim() : null;
         const domain = domainEl ? String(domainEl.innerText || "").trim() : null;
-        const url = linkEl ? normalizeMentionUrl(toAbsoluteUrl(linkEl.getAttribute("href"))) : null;
+        const hrefRaw = linkEl ? linkEl.getAttribute("href") : null;
+        if (hrefRaw && hasRecirculationMarker(hrefRaw)) {
+          continue; // skip links marked as coming from responses
+        }
+        const url = linkEl ? normalizeMentionUrl(toAbsoluteUrl(hrefRaw)) : null;
+
+        // Skip sections that look like author bios or references
+        if (/\b(conclusion|summary|references?|about|author|bio)\b/i.test(String(title || ""))) {
+          continue;
+        }
+
+        // Skip Medium's built-in sections that aren't actual "mentions by author"
+        if (/\bmore from\s+\w+\b/i.test(String(title || ""))) {
+          continue; // Skip "More from [Author]" sections
+        }
+        if (/\brecommended from medium\b/i.test(String(title || ""))) {
+          continue; // Skip "Recommended from Medium" sections
+        }
+
+        // Skip post-preview cards (these are Medium's article preview widgets)
+        if (card.querySelector && card.querySelector('[data-testid="post-preview"]')) {
+          continue;
+        }
 
         if (title && url) {
           const cardData = { title, subtitle, domain, url };
@@ -620,8 +874,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       for (const m of arr || []) {
         if (!m) continue;
         const url = m.url ? normalizeMentionUrl(m.url) : null;
+        const canon = url ? canonicalizeUrlForDedupe(url) : null;
         const titleKey = (m.title || "").trim().toLowerCase();
-        const key = url ? ("u:" + url) : ("t:" + titleKey);
+        // Prefer URL-based key; scheme-insensitive, no www, no trailing slash
+        const key = canon ? ("u:" + canon) : ("t:" + titleKey);
         if (seen.has(key)) continue;
         seen.add(key);
         out.push(m);
@@ -690,29 +946,29 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return { src, width, height };
     })();
 
-    console.group("🔗 Mention Cards Detection & Pruning");
+    Logger.group("Mention Cards Detection & Pruning");
     // --- Extract mentions (link cards) and prune from article ---
     const mentionsInside = extractMentionsAndPrune(article);
     // --- Also capture any similar cards that appear after the article on the page ---
     const mentionsAfter = extractMentionsAfterArticle(originalArticle);
     const mentions = dedupeMentions([...(mentionsInside || []), ...(mentionsAfter || [])]);
-    console.log("📋 Mentions summary:", {
+    Logger.info("Mentions summary", {
       inside: (mentionsInside || []).length,
       after: (mentionsAfter || []).length,
       deduped: (mentions || []).length
     });
 
     if (mentions.length > 0) {
-      console.table(mentions.map((m, i) => ({
+      Logger.info("Mentions table", mentions.map((m, i) => ({
         '#': i + 1,
         title: (m.title || '').substring(0, 50) + (m.title && m.title.length > 50 ? '...' : ''),
         url: (m.url || '').substring(0, 50) + (m.url && m.url.length > 50 ? '...' : ''),
         subtitle: (m.subtitle || '').substring(0, 30) + (m.subtitle && m.subtitle.length > 30 ? '...' : '') || 'N/A'
       })));
     }
-    console.groupEnd();
+    Logger.groupEnd();
 
-    console.group("🏗️ Content Block Building");
+    Logger.group("Content Block Building");
     // --- Walk DOM in order and build blocks (group by headings) ---
     const blocks = [];
     let current = { heading: "", level: 0, content: [] };
@@ -721,7 +977,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       items: { paragraph: 0, list: 0, quote: 0, code: 0, hr: 0, image: 0, caption: 0 },
       headings: { h2: 0, h3: 0, h4: 0, h5: 0, h6: 0 }
     };
-    console.log("🔄 Processing DOM nodes to build content blocks...");
+    Logger.log("Processing DOM nodes to build content blocks");
 
     const nodes = Array.from(article.querySelectorAll(
       "h2, h3, h4, h5, h6, p, ul, ol, blockquote, img, figcaption, hr, pre, div[data-selectable-paragraph], span[data-selectable-paragraph]"
@@ -819,9 +1075,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .filter(c => c.type === "paragraph").slice(-2)
       .map(p => (p.segments || []).map(s => s.text).join("")));
 
-    console.group("📊 Extraction Summary");
-    console.log("✅ Extraction completed successfully");
-    console.log("📈 Final statistics:", {
+    Logger.group("Extraction Summary");
+    Logger.success("Extraction completed successfully");
+    Logger.info("Final statistics", {
       title: title?.substring(0, 60) + (title && title.length > 60 ? '...' : ''),
       url: canonicalUrl,
       blocks: stats.blocks,
@@ -833,10 +1089,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
 
     const endTime = performance.now();
-    console.log(`⏱️ Total extraction time: ${(endTime - startTime).toFixed(2)}ms`);
-    console.groupEnd();
-    console.groupEnd(); // Close Content Block Building group
-    console.groupEnd(); // Close Article Extraction Process group
+    const totalTime = endTime - startTime;
+    Logger.info("Total extraction time", {
+      duration: `${totalTime.toFixed(2)}ms`,
+      memory: PerformanceMonitor.memory()
+    });
+
+    Logger.groupEnd();
+    Logger.groupEnd(); // Close Content Block Building group
+    Logger.groupEnd(); // Close Article Extraction Process group
 
     sendResponse({ title, subtitle, author, blocks, publishedDate, readingTimeMinutes, canonicalUrl, heroImage, mentions });
   }

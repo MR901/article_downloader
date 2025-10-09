@@ -1,3 +1,46 @@
+// Enhanced logging utility for popup
+const PopupLogger = {
+  startTime: Date.now(),
+  sessionId: Math.random().toString(36).substr(2, 9),
+
+  log: (message, data = null) => {
+    const timestamp = ((Date.now() - PopupLogger.startTime) / 1000).toFixed(2) + 's';
+    console.log(`[${timestamp}] 🔵 ${message}`, data ? { session: PopupLogger.sessionId, ...data } : { session: PopupLogger.sessionId });
+  },
+
+  warn: (message, data = null) => {
+    const timestamp = ((Date.now() - PopupLogger.startTime) / 1000).toFixed(2) + 's';
+    console.warn(`[${timestamp}] ⚠️ ${message}`, data ? { session: PopupLogger.sessionId, ...data } : { session: PopupLogger.sessionId });
+  },
+
+  error: (message, error = null) => {
+    const timestamp = ((Date.now() - PopupLogger.startTime) / 1000).toFixed(2) + 's';
+    console.error(`[${timestamp}] ❌ ${message}`, {
+      session: PopupLogger.sessionId,
+      error: error?.message || error,
+      stack: error?.stack?.split('\n').slice(0, 3).join('\n')
+    });
+  },
+
+  group: (message) => {
+    console.group(`🚀 ${message}`);
+  },
+
+  groupEnd: () => {
+    console.groupEnd();
+  },
+
+  success: (message, data = null) => {
+    const timestamp = ((Date.now() - PopupLogger.startTime) / 1000).toFixed(2) + 's';
+    console.log(`[${timestamp}] ✅ ${message}`, data ? { session: PopupLogger.sessionId, ...data } : { session: PopupLogger.sessionId });
+  },
+
+  info: (message, data = null) => {
+    const timestamp = ((Date.now() - PopupLogger.startTime) / 1000).toFixed(2) + 's';
+    console.info(`[${timestamp}] ℹ️ ${message}`, data ? { session: PopupLogger.sessionId, ...data } : { session: PopupLogger.sessionId });
+  }
+};
+
 function updateStatus(message, type = "info") {
   try {
     const el = document.getElementById("status");
@@ -7,52 +50,131 @@ function updateStatus(message, type = "info") {
   } catch (_) {}
 }
 
-const convertBtn = document.getElementById("convert");
+let convertBtn = document.getElementById("convert");
 
 convertBtn.addEventListener("click", async () => {
-  console.group("🚀 PDF Generation Process");
-  console.log("📋 Generate Clean PDF clicked");
+  PopupLogger.group("PDF Generation Process");
+  PopupLogger.log("Generate Clean PDF clicked");
   const overallStartTime = performance.now();
 
   try {
     convertBtn.disabled = true;
     updateStatus("Locating active tab…");
 
-    console.group("🔍 Tab & Communication Setup");
+    PopupLogger.group("Tab & Communication Setup");
     const tabs = await queryTabs({ active: true, currentWindow: true });
     const tab = tabs && tabs[0];
     if (!tab) {
-      console.error("❌ No active tab found");
+      PopupLogger.error("No active tab found");
       updateStatus("No active tab found", "error");
       convertBtn.disabled = false;
-      console.groupEnd();
-      console.groupEnd();
+      PopupLogger.groupEnd();
+      PopupLogger.groupEnd();
       return;
     }
-    console.log("✅ Active tab found:", { id: tab.id, title: tab.title?.substring(0, 50) + '...' });
-    console.groupEnd();
+    PopupLogger.success("Active tab found", { id: tab.id, title: tab.title?.substring(0, 50) + '...' });
+    PopupLogger.groupEnd();
 
     updateStatus("Extracting article…");
-    console.group("📄 Article Extraction");
+    PopupLogger.group("Article Extraction");
     const t0 = performance.now();
-    const article = await sendMessageToTab(tab.id, { action: "extractArticle" });
+    let article = null;
+    try {
+      article = await sendMessageToTab(tab.id, { action: "extractArticle" });
+    } catch (e1) {
+      article = { error: e1 && e1.message ? e1.message : "extract failed" };
+    }
     const t1 = performance.now();
 
     // Expose for debugging from popup DevTools
     try { window.__lastArticle = article; } catch (_) {}
-    console.log(`⏱️ Extraction time: ${(t1 - t0).toFixed(2)}ms`);
+    PopupLogger.info("Extraction time", { duration: `${(t1 - t0).toFixed(2)}ms` });
 
     if (!article || article.error) {
-      const reason = (article && article.error) || "Unknown error";
-      console.error("❌ Article extraction failed:", reason);
-      updateStatus("Failed to extract article: " + reason, "error");
-      convertBtn.disabled = false;
+      const reason = (article && article.error) || "Unsupported site";
+      PopupLogger.warn("Extraction not supported", { reason });
+      updateStatus("Site not supported. Enabling Force Generate in 3s…", "error");
+
+      // Show pending state, then enable a Force Generate behavior
+      await new Promise(r => setTimeout(r, 3000));
+
+      const originalText = convertBtn.textContent;
+
+      // Clone the button to remove all existing event listeners
+      const newButton = convertBtn.cloneNode(true);
+      convertBtn.parentNode.replaceChild(newButton, convertBtn);
+
+      // Update the global reference to the new button
+      convertBtn = newButton;
+      const forceBtn = newButton;
+
+      forceBtn.textContent = "Force Generate";
+      forceBtn.disabled = false;
+
+      // One-time forced flow handler
+      const onForce = async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        // Remove this handler and restore original state
+        forceBtn.removeEventListener('click', onForce);
+
+        // Clone again to get a fresh button for the original handler
+        const originalButton = forceBtn.cloneNode(true);
+        forceBtn.parentNode.replaceChild(originalButton, forceBtn);
+
+        // Update the global reference to the restored button
+        convertBtn = originalButton;
+
+        // Restore original state
+        originalButton.textContent = originalText;
+        originalButton.disabled = true;
+        updateStatus("Force extracting…");
+
+        PopupLogger.group("Forced Article Extraction");
+        let forced = null;
+        const ft0 = performance.now();
+        try {
+          forced = await sendMessageToTab(tab.id, { action: "forceExtractArticle" });
+        } catch (e2) {
+          forced = { error: e2 && e2.message ? e2.message : "force extract failed" };
+        }
+        const ft1 = performance.now();
+        PopupLogger.info("Forced extraction time", { duration: `${(ft1 - ft0).toFixed(2)}ms` });
+        PopupLogger.groupEnd();
+
+        if (!forced || forced.error) {
+          const why = (forced && forced.error) || "Unknown error";
+          PopupLogger.error("Forced extraction failed", { reason: why });
+          updateStatus("Forced extraction failed: " + why, "error");
+          originalButton.disabled = false;
+          return;
+        }
+
+        // Proceed to PDF generation
+        updateStatus("Generating PDF…");
+        PopupLogger.group("PDF Generation");
+        const t2 = performance.now();
+        await generatePDF(forced);
+        const t3 = performance.now();
+        PopupLogger.info("PDF generation time", { duration: `${(t3 - t2).toFixed(2)}ms` });
+        PopupLogger.info("Total process time", { duration: `${(t3 - overallStartTime).toFixed(2)}ms` });
+        PopupLogger.groupEnd();
+
+        updateStatus("PDF saved.", "success");
+        originalButton.disabled = false;
+        PopupLogger.success("PDF generation completed successfully");
+        PopupLogger.groupEnd();
+      };
+
+      // Replace the click handler with our force handler
+      forceBtn.addEventListener('click', onForce);
       console.groupEnd();
       console.groupEnd();
       return;
     }
 
-    console.log("✅ Article extracted successfully");
+    PopupLogger.success("Article extracted successfully");
     try {
       const summary = {
         title: article.title?.substring(0, 50) + (article.title && article.title.length > 50 ? '...' : ''),
@@ -63,31 +185,31 @@ convertBtn.addEventListener("click", async () => {
         publishedDate: article.publishedDate,
         readingTime: article.readingTimeMinutes
       };
-      console.table([summary]);
+      PopupLogger.info("Article summary", summary);
     } catch (error) {
-      console.warn("⚠️ Could not generate summary table:", error.message);
+      PopupLogger.warn("Could not generate summary table", { error: error.message });
     }
-    console.groupEnd();
+    PopupLogger.groupEnd();
 
     updateStatus("Generating PDF…");
-    console.group("📕 PDF Generation");
+    PopupLogger.group("PDF Generation");
     const t2 = performance.now();
     await generatePDF(article);
     const t3 = performance.now();
-    console.log(`⏱️ PDF generation time: ${(t3 - t2).toFixed(2)}ms`);
-    console.log(`⏱️ Total process time: ${(t3 - overallStartTime).toFixed(2)}ms`);
-    console.groupEnd();
+    PopupLogger.info("PDF generation time", { duration: `${(t3 - t2).toFixed(2)}ms` });
+    PopupLogger.info("Total process time", { duration: `${(t3 - overallStartTime).toFixed(2)}ms` });
+    PopupLogger.groupEnd();
 
     updateStatus("PDF saved.", "success");
     convertBtn.disabled = false;
-    console.log("✅ PDF generation completed successfully");
-    console.groupEnd();
+    PopupLogger.success("PDF generation completed successfully");
+    PopupLogger.groupEnd();
 
   } catch (err) {
-    console.error("💥 Unhandled error in PDF generation:", err);
+    PopupLogger.error("Unhandled error in PDF generation", err);
     updateStatus("Error: " + (err && err.message ? err.message : String(err)), "error");
     convertBtn.disabled = false;
-    console.groupEnd();
+    PopupLogger.groupEnd();
   }
 });
 
@@ -1190,27 +1312,91 @@ function queryTabs(queryInfo) {
   });
 }
 
-function sendMessageToTab(tabId, message) {
+// Inject content scripts at runtime for pages not covered by manifest matches (MV2-compatible)
+function executeScriptMV2(tabId, file) {
   return new Promise((resolve, reject) => {
-    let completed = false;
     try {
-      chrome.tabs.sendMessage(tabId, message, response => {
+      chrome.tabs.executeScript(tabId, { file }, () => {
         const err = chrome.runtime && chrome.runtime.lastError;
         if (err) {
-          reject(new Error(err.message || "sendMessage failed"));
+          reject(new Error(err.message || "executeScript failed"));
           return;
         }
-        completed = true;
-        resolve(response);
+        resolve();
       });
-      // Failsafe timeout in case no content script is present
-      setTimeout(() => {
-        if (!completed) {
-          reject(new Error("Timed out waiting for content script response"));
-        }
-      }, 5000);
     } catch (e) {
       reject(e);
     }
+  });
+}
+
+function ensureContentScripts(tabId) {
+  PopupLogger.info("Injecting content scripts into active tab (fallback)");
+  try { updateStatus("Preparing extractor on this page…"); } catch (_) {}
+  // Best effort: inject providers first (content depends on it), ignore if already present
+  return executeScriptMV2(tabId, "providers.js")
+    .catch(() => {})
+    .then(() => executeScriptMV2(tabId, "content.js"))
+    .then(() => {
+      try { updateStatus("Extractor ready. Retrying…"); } catch (_) {}
+      return new Promise(r => setTimeout(r, 100)); // allow listener to register
+    });
+}
+
+function sendMessageToTab(tabId, message) {
+  return new Promise((resolve, reject) => {
+    function shouldTryInject(msg) {
+      if (!msg) return false;
+      const m = String(msg);
+      return /Receiving end does not exist|Could not establish connection|The message port closed/i.test(m);
+    }
+
+    let timeoutId = null;
+
+    const attempt = (hasRetried) => {
+      let finished = false;
+      try {
+        chrome.tabs.sendMessage(tabId, message, response => {
+          const err = chrome.runtime && chrome.runtime.lastError;
+          if (timeoutId) { try { clearTimeout(timeoutId); } catch (_) {} }
+          if (err) {
+            if (!hasRetried && shouldTryInject(err.message)) {
+              ensureContentScripts(tabId)
+                .then(() => attempt(true))
+                .catch(injectErr => {
+                  reject(new Error((err.message || "sendMessage failed") + "; inject failed: " + (injectErr.message || injectErr)));
+                });
+              return;
+            }
+            reject(new Error(err.message || "sendMessage failed"));
+            return;
+          }
+          finished = true;
+          resolve(response);
+        });
+
+        // Timeout safeguard; if it fires and we haven't retried yet, attempt injection once
+        timeoutId = setTimeout(() => {
+          if (finished) return;
+          if (!hasRetried) {
+            ensureContentScripts(tabId)
+              .then(() => attempt(true))
+              .catch(e => reject(new Error("Timed out waiting for content script response; inject failed: " + (e.message || e))));
+          } else {
+            reject(new Error("Timed out waiting for content script response"));
+          }
+        }, 5000);
+      } catch (e) {
+        if (!hasRetried && shouldTryInject(e && e.message)) {
+          ensureContentScripts(tabId)
+            .then(() => attempt(true))
+            .catch(injectErr => reject(new Error((e.message || "sendMessage failed") + "; inject failed: " + (injectErr.message || injectErr))));
+          return;
+        }
+        reject(e);
+      }
+    };
+
+    attempt(false);
   });
 }
