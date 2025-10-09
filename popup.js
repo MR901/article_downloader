@@ -35,7 +35,7 @@ convertBtn.addEventListener("click", async () => {
     updateStatus("Extracting article…");
     console.group("📄 Article Extraction");
     const t0 = performance.now();
-    const article = await sendMessageToTab(tab.id, { action: "extractMediumArticle" });
+    const article = await sendMessageToTab(tab.id, { action: "extractArticle" });
     const t1 = performance.now();
 
     // Expose for debugging from popup DevTools

@@ -41,7 +41,7 @@
         "https://blog.stackademic.com/*",
         "https://towardsdatascience.com/*"
       ],
-      "js": ["content.js"]
+      "js": ["providers.js", "content.js"]
     }
   ]
 }

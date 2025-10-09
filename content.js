@@ -4,21 +4,44 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
   console.log("[content] onMessage:", msg);
-  if (msg.action === "extractMediumArticle") {
+  // Support both the new generic action and the legacy Medium-specific action
+  if (msg.action === "extractArticle" || msg.action === "extractMediumArticle") {
     console.group("🔍 Article Extraction Process");
     console.log("📄 Starting article extraction...");
     const startTime = performance.now();
 
-    const host = String(location.hostname || "");
-    const isAllowed = /(^|\.)medium\.com$/i.test(host)
-      || /^blog\.stackademic\.com$/i.test(host)
-      || /^towardsdatascience\.com$/i.test(host);
-    if (!isAllowed) {
-      console.warn("❌ Unsupported site:", host);
-      console.groupEnd();
-      return sendResponse({ error: "Unsupported site" });
+    // Provider gating using global registry
+    try {
+      const href = (typeof location !== 'undefined' && location.href) ? location.href : null;
+      const registry = window.__ArticleDocProviderRegistry;
+      const provider = registry && href ? registry.findProviderByUrl(href) : null;
+      if (!provider) {
+        const host = String(location.hostname || "");
+        console.warn("❌ No provider matched:", host);
+        console.groupEnd();
+        return sendResponse({ error: "Unsupported site" });
+      }
+      // Check allowed action
+      const action = msg.action === "extractMediumArticle" ? "extractArticle" : msg.action;
+      if (!provider.isActionAllowed(action)) {
+        console.warn("❌ Action not allowed by provider:", { provider: provider.id, action });
+        console.groupEnd();
+        return sendResponse({ error: "Action not allowed for this site" });
+      }
+      console.log("✅ Provider matched:", { id: provider.id, name: provider.name });
+    } catch (_) {
+      // If registry not available for some reason, continue with legacy allowlist (backward compat)
+      const host = String(location.hostname || "");
+      const isAllowed = /(^|\.)medium\.com$/i.test(host)
+        || /^blog\.stackademic\.com$/i.test(host)
+        || /^towardsdatascience\.com$/i.test(host);
+      if (!isAllowed) {
+        console.warn("❌ Unsupported site:", host);
+        console.groupEnd();
+        return sendResponse({ error: "Unsupported site" });
+      }
+      console.log("✅ Site supported (fallback allowlist):", host);
     }
-    console.log("✅ Site supported:", host);
 
     function findBestArticleContainerHeuristic() {
       console.log("🔍 Searching for best article container using heuristics...");
