@@ -385,130 +385,149 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
     }
 
-    function extractMentionsAndPrune(root) {
-      const results = [];
-      const processed = new Set();
-      // More specific: only Medium domains for "discover" cards, not general domains like linkedin.com
-      const mediumDomainRegex = /\b[a-z0-9.-]+\.medium\.com(?:\b|\s|$)/i;
-
-      // Pass 1: Anchors that visually look like Medium "discover"/card links
-      const anchorCards = Array.from(root.querySelectorAll('a[href]')).filter(a => {
-        const hasH2 = !!a.querySelector('h2');
-        if (!hasH2) return false;
-
-        // Check for Medium domain in the entire anchor subtree (not just direct text)
-        const anchorText = (a.textContent || "").trim();
-        const hasMediumDomain = mediumDomainRegex.test(anchorText);
-
-        if (!hasMediumDomain) return false;
-
-        // Additional check: look for typical Medium card structure (title + domain)
-        const titleEl = a.querySelector('h2');
-        const title = titleEl ? String(titleEl.innerText || "").trim() : null;
-        if (!title || title.length > 100) return false; // Card titles are usually short
-
-        // Check if this looks like a card container (has the typical Medium card classes)
-        const cardContainer = a.closest('div[class*="q"], div[class*="qn"], div[class*="qt"]');
-        if (!cardContainer) return false;
-
-        return true;
-      });
-
-      for (const a of anchorCards) {
-        if (processed.has(a)) continue;
-        const titleEl = a.querySelector('h2');
-        const subtitleEl = a.querySelector('h3');
-        const title = titleEl ? String(titleEl.innerText || "").trim() : null;
-        const subtitle = subtitleEl ? String(subtitleEl.innerText || "").trim() : null;
-        const url = normalizeMentionUrl(toAbsoluteUrl(a.getAttribute('href')));
-        if (title && url) {
-          console.log("[content] Found mention card (anchor):", { title, url });
-          results.push({ title, subtitle, url });
-          processed.add(a);
-          // Remove the visible card safely without nuking surrounding content
-          let cardRoot = a.closest('div[class*="q"]'); // Look for the card container div
-          if (!cardRoot) {
-            cardRoot = a.parentElement;
-            // Climb to the nearest DIV container but stop at root
-            while (cardRoot && cardRoot !== root && cardRoot.tagName !== 'DIV') {
-              cardRoot = cardRoot.parentElement;
-            }
-          }
-          let removed = false;
-          if (cardRoot && root.contains(cardRoot)) {
-            // Only remove the container if it doesn't contain other likely article content outside the anchor
-            const others = Array.from(cardRoot.querySelectorAll(
-              "p, h2, h3, h4, h5, h6, pre, ul, ol, blockquote, img, figcaption, div[data-selectable-paragraph], span[data-selectable-paragraph]"
-            )).filter(n => !a.contains(n));
-            if (others.length === 0) {
-              cardRoot.remove();
-              removed = true;
-              console.log("[content] Removed card container:", cardRoot.className);
-            }
-          }
-          if (!removed) {
-            a.remove();
-            console.log("[content] Removed anchor only");
-          }
-        }
+    // CardDetector utility class for detecting and extracting mention cards
+    class CardDetector {
+      constructor() {
+        this.processedElements = new Set();
+        this.results = [];
       }
 
-      // Pass 2: Fallback for card-like DIVs that weren't wrapped in anchors (be more conservative)
-      const candidates = Array.from(root.querySelectorAll('div')).filter(div => {
-        if (processed.has(div)) return false;
+      // Detect if an element has the characteristic Medium card structure
+      hasCardStructure(element) {
+        // Check for the typical Medium card classes
+        const cardClasses = /\b(qn|qo|qp|qq|qr|qs|qt|qu|qv|qw|qx|qy|qz|ra|rb|rc|rd|re|rf)\b/;
+        return cardClasses.test(element.className || '');
+      }
 
-        // Look for card-like structure with specific Medium card classes
-        const hasCardClasses = /\b(qn|qo|qp|qq|qr|qs|qt|qu|qv|qw|qx|qy|qz)\b/.test(div.className || '');
-        if (!hasCardClasses) return false;
+      // Extract card information from an anchor element
+      extractFromAnchor(anchor) {
+        if (this.processedElements.has(anchor)) return null;
 
-        const hasH2 = !!div.querySelector('h2');
-        if (!hasH2) return false;
+        const titleEl = anchor.querySelector('h2');
+        const subtitleEl = anchor.querySelector('h3');
+        const domainEl = anchor.querySelector('p');
 
-        // Check for Medium domain in the entire div subtree
-        const divText = (div.textContent || '').trim();
-        const hasMediumDomain = mediumDomainRegex.test(divText);
+        const title = titleEl ? String(titleEl.innerText || '').trim() : null;
+        const subtitle = subtitleEl ? String(subtitleEl.innerText || '').trim() : null;
+        const domain = domainEl ? String(domainEl.innerText || '').trim() : null;
+        const url = normalizeMentionUrl(toAbsoluteUrl(anchor.getAttribute('href')));
 
-        if (!hasMediumDomain) return false;
+        if (title && url) {
+          const card = { title, subtitle, domain, url };
+          console.log("[content] Found mention card (anchor):", card);
+          this.results.push(card);
+          this.processedElements.add(anchor);
+          return card;
+        }
+        return null;
+      }
+
+      // Extract card information from a div element (fallback)
+      extractFromDiv(div) {
+        if (this.processedElements.has(div)) return null;
+
+        const titleEl = div.querySelector('h2');
+        const subtitleEl = div.querySelector('h3');
+        const linkEl = div.querySelector('a[href]');
+        const domainEl = div.querySelector('p');
+
+        const title = titleEl ? String(titleEl.innerText || '').trim() : null;
+        const subtitle = subtitleEl ? String(subtitleEl.innerText || '').trim() : null;
+        const domain = domainEl ? String(domainEl.innerText || '').trim() : null;
+        const url = linkEl ? normalizeMentionUrl(toAbsoluteUrl(linkEl.getAttribute('href'))) : null;
+
+        // Validate card structure
+        if (!title || title.length > 100 || !url) return null;
+
+        // Skip sections that look like article conclusions or author bios
+        if (/\b(conclusion|summary|references?|about|author|bio)\b/i.test(title)) {
+          return null;
+        }
 
         // Avoid enormous containers (likely the whole article wrapper)
         const childCount = div.children ? div.children.length : 0;
-        if (childCount > 20) return false;
-        const numH2 = div.querySelectorAll('h2').length;
-        if (numH2 > 3) return false;
+        if (childCount > 20) return null;
 
-        // Additional check: look for typical card structure
-        const titleEl = div.querySelector('h2');
-        const title = titleEl ? String(titleEl.innerText || '').trim() : null;
-        if (!title || title.length > 100 || /\b(conclusion|summary|references?|about|author|bio)\b/i.test(title)) {
-          return false; // Skip sections that look like article conclusions or author bios
+        const card = { title, subtitle, domain, url };
+        console.log("[content] Found mention card (div):", { ...card, className: div.className });
+        this.results.push(card);
+        this.processedElements.add(div);
+        return card;
+      }
+
+      // Remove a card element safely
+      removeCard(cardElement, root) {
+        let cardRoot = cardElement.closest('div[class*="q"]');
+        if (!cardRoot) {
+          cardRoot = cardElement.parentElement;
+          // Climb to the nearest DIV container but stop at root
+          while (cardRoot && cardRoot !== root && cardRoot.tagName !== 'DIV') {
+            cardRoot = cardRoot.parentElement;
+          }
         }
 
-        return true;
-      });
+        let removed = false;
+        if (cardRoot && root.contains(cardRoot)) {
+          // Only remove the container if it doesn't contain other likely article content outside the card
+          const others = Array.from(cardRoot.querySelectorAll(
+            "p, h2, h3, h4, h5, h6, pre, ul, ol, blockquote, img, figcaption, div[data-selectable-paragraph], span[data-selectable-paragraph]"
+          )).filter(n => !cardElement.contains(n));
 
-      for (const card of candidates) {
-        if (processed.has(card)) continue;
-        const titleEl = card.querySelector('h2');
-        const subtitleEl = card.querySelector('h3');
-        const linkEl = card.querySelector('a[href]');
-        const title = titleEl ? String(titleEl.innerText || '').trim() : null;
-        const subtitle = subtitleEl ? String(subtitleEl.innerText || '').trim() : null;
-        const url = linkEl ? normalizeMentionUrl(toAbsoluteUrl(linkEl.getAttribute('href'))) : null;
-        if (title && url) {
-          console.log("[content] Found mention card (div):", { title, url, className: card.className });
-          results.push({ title, subtitle, url });
-          processed.add(card);
-          card.remove();
+          if (others.length === 0) {
+            cardRoot.remove();
+            removed = true;
+            console.log("[content] Removed card container:", cardRoot.className);
+          }
+        }
+
+        if (!removed) {
+          cardElement.remove();
+          console.log("[content] Removed card element only");
         }
       }
-      return results;
+
+      // Main detection method
+      detectCards(root) {
+        this.results = [];
+        this.processedElements = new Set();
+
+        // Pass 1: Detect cards by their characteristic structure
+        const cardContainers = Array.from(root.querySelectorAll('div')).filter(div =>
+          this.hasCardStructure(div) && div.querySelector('h2')
+        );
+
+        for (const container of cardContainers) {
+          if (this.processedElements.has(container)) continue;
+
+          const anchor = container.querySelector('a[href]');
+          if (anchor) {
+            // This is an anchor-based card
+            const card = this.extractFromAnchor(anchor);
+            if (card) {
+              this.removeCard(anchor, root);
+            }
+          } else {
+            // This is a div-based card (fallback)
+            const card = this.extractFromDiv(container);
+            if (card) {
+              container.remove();
+            }
+          }
+        }
+
+        return this.results;
+      }
+    }
+
+    function extractMentionsAndPrune(root) {
+      const cardDetector = new CardDetector();
+      return cardDetector.detectCards(root);
     }
 
     // Scan live document for Medium redirect/link cards that appear visually after the article
     function extractMentionsAfterArticle(articleEl) {
+      const cardDetector = new CardDetector();
       const results = [];
-      const seen = new Set();
-      const mediumDomainRegex = /\b[a-z0-9.-]+\.medium\.com(?:\b|\s|$)/i;
       if (!articleEl || typeof articleEl.getBoundingClientRect !== "function") return results;
 
       let articleBottom = 0;
@@ -522,37 +541,51 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (!div) return false;
         // Skip anything within the article itself (those are handled by extractMentionsAndPrune)
         if (articleEl.contains(div)) return false;
+
+        // Check if it has the card structure
+        if (!cardDetector.hasCardStructure(div)) return false;
+
         // Title presence: either direct h2 or nested h2
         const hasH2 = !!div.querySelector(":scope > h2") || !!div.querySelector("h2");
         if (!hasH2) return false;
+
         const txt = (div.innerText || "").trim();
         if (!txt) return false;
-        if (!mediumDomainRegex.test(txt)) return false;
+
         // Avoid enormous containers
         const childCount = div.children ? div.children.length : 0;
         if (childCount > 12) return false;
+
         // Only consider elements that render below the bottom of the article
         let top = 0;
         try { top = div.getBoundingClientRect().top; } catch (_) { top = 0; }
         if (top <= articleBottom) return false;
+
         // Avoid sticky/fixed overlays
         const style = window.getComputedStyle(div);
         if (style && (style.position === "fixed" || style.position === "sticky")) return false;
+
         return true;
       });
 
       for (const card of candidates) {
-        if (seen.has(card)) continue;
+        if (cardDetector.processedElements.has(card)) continue;
+
         const titleEl = card.querySelector(":scope > h2") || card.querySelector("h2");
         const subtitleEl = card.querySelector("h3");
         const linkEl = card.querySelector("a[href]");
+        const domainEl = card.querySelector("p");
+
         const title = titleEl ? String(titleEl.innerText || "").trim() : null;
         const subtitle = subtitleEl ? String(subtitleEl.innerText || "").trim() : null;
+        const domain = domainEl ? String(domainEl.innerText || "").trim() : null;
         const url = linkEl ? normalizeMentionUrl(toAbsoluteUrl(linkEl.getAttribute("href"))) : null;
 
         if (title && url) {
-          results.push({ title, subtitle, url });
-          seen.add(card);
+          const cardData = { title, subtitle, domain, url };
+          console.log("[content] Found mention card (after article):", cardData);
+          results.push(cardData);
+          cardDetector.processedElements.add(card);
         }
       }
       return results;

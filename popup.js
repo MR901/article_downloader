@@ -95,6 +95,16 @@ async function generatePDF(article) {
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF({ unit: "pt", format: "a4" });
 
+  // Register Unicode-supporting font for better character support
+  try {
+    // Use a more Unicode-friendly font if available
+    pdf.setFont("helvetica");
+    // Enable Unicode support flag
+    pdf.internal.charSet = 'Unicode';
+  } catch (e) {
+    console.warn("Could not set Unicode font support:", e.message);
+  }
+
   // --- Layout and Style ---
   const margin = 56; // ~0.78in
   const pageH = pdf.internal.pageSize.getHeight();
@@ -161,7 +171,9 @@ async function generatePDF(article) {
   }
 
   function measure(text) {
-    return pdf.getTextWidth(text);
+    // Normalize Unicode characters before measuring
+    const normalizedText = normalizeUnicodeForPDF(text);
+    return pdf.getTextWidth(normalizedText);
   }
 
   function styleFromSeg(seg) {
@@ -295,7 +307,9 @@ async function generatePDF(article) {
 
   function splitTokenIntoFragments(tok, seg, size) {
     // Returns array of { type: 'text'|'emoji', text, width }
-    const graphemes = segmentGraphemes(tok);
+    // Normalize Unicode characters in the token before processing
+    const normalizedTok = normalizeUnicodeForPDF(tok);
+    const graphemes = segmentGraphemes(normalizedTok);
     const out = [];
     let currentText = "";
     let currentW = 0;
@@ -325,8 +339,10 @@ async function generatePDF(article) {
   function drawFragments(fragments, x, y, seg, size) {
     for (const f of fragments) {
       if (f.type === "text" && f.text) {
+        // Normalize Unicode characters before rendering
+        const normalizedText = normalizeUnicodeForPDF(f.text);
         withSegFont(seg, size, () => {
-          pdf.text(f.text, x, y);
+          pdf.text(normalizedText, x, y);
         });
         x += f.width;
       } else if (f.type === "emoji" && f.text) {
@@ -344,6 +360,136 @@ async function generatePDF(article) {
   function drawTextWithEmojis(text, x, y, seg, size) {
     const frags = splitTokenIntoFragments(text, seg, size);
     drawFragments(frags, x, y, seg, size);
+  }
+
+  function drawUnicodeSafeText(text, x, y, options = {}) {
+    if (!text) return x;
+
+    // Apply Unicode character substitution before rendering
+    const normalizedText = normalizeUnicodeForPDF(text);
+
+    try {
+      // For linked text, use the link-aware method
+      if (options.url) {
+        pdf.textWithLink(normalizedText, x, y, { url: options.url });
+      } else {
+        // Use direct text rendering with Unicode support
+        pdf.text(normalizedText, x, y);
+      }
+      return x + pdf.getTextWidth(normalizedText);
+    } catch (e) {
+      // Fallback: try to render character by character for problematic Unicode
+      console.warn("Unicode text rendering failed, using fallback:", e.message);
+      return drawUnicodeSafeTextFallback(normalizedText, x, y, options);
+    }
+  }
+
+  // Unicode character normalization for PDF rendering
+  // Maps problematic Unicode characters (especially mathematical symbols) to ASCII equivalents
+  const UNICODE_TO_ASCII_MAP = {
+    // Mathematical Alphanumeric Symbols - Bold (U+1D5D0-U+1D5FF)
+    '𝗔': 'A', '𝗕': 'B', '𝗖': 'C', '𝗗': 'D', '𝗘': 'E', '𝗙': 'F', '𝗚': 'G',
+    '𝗛': 'H', '𝗜': 'I', '𝗝': 'J', '𝗞': 'K', '𝗟': 'L', '𝗠': 'M', '𝗡': 'N',
+    '𝗢': 'O', '𝗣': 'P', '𝗤': 'Q', '𝗥': 'R', '𝗦': 'S', '𝗧': 'T', '𝗨': 'U',
+    '𝗩': 'V', '𝗪': 'W', '𝗫': 'X', '𝗬': 'Y', '𝗭': 'Z',
+
+    // Mathematical Alphanumeric Symbols - Bold Italic (U+1D5DC-U+1D5FF)
+    '𝘈': 'A', '𝘉': 'B', '𝘊': 'C', '𝘋': 'D', '𝘌': 'E', '𝘍': 'F', '𝘎': 'G',
+    '𝘏': 'H', '𝘐': 'I', '𝘑': 'J', '𝘒': 'K', '𝘓': 'L', '𝘔': 'M', '𝘕': 'N',
+    '𝘖': 'O', '𝘗': 'P', '𝘘': 'Q', '𝘙': 'R', '𝘚': 'S', '𝘛': 'T', '𝘜': 'U',
+    '𝘝': 'V', '𝘞': 'W', '𝘟': 'X', '𝘠': 'Y', '𝘡': 'Z',
+
+    // Mathematical Alphanumeric Symbols - Italic (U+1D434-U+1D44D)
+    '𝐴': 'A', '𝐵': 'B', '𝐶': 'C', '𝐷': 'D', '𝐸': 'E', '𝐹': 'F', '𝐺': 'G',
+    '𝐻': 'H', '𝐼': 'I', '𝐽': 'J', '𝐾': 'K', '𝐿': 'L', '𝑀': 'M', '𝑁': 'N',
+    '𝑂': 'O', '𝑃': 'P', '𝑄': 'Q', '𝑅': 'R', '𝑆': 'S', '𝑇': 'T', '𝑈': 'U',
+    '𝑉': 'V', '𝑊': 'W', '𝑋': 'X', '𝑌': 'Y', '𝑍': 'Z',
+
+    // Mathematical Alphanumeric Symbols - Bold Italic lowercase (U+1D48A-U+1D4A3)
+    '𝒂': 'a', '𝒃': 'b', '𝒄': 'c', '𝒅': 'd', '𝒆': 'e', '𝒇': 'f', '𝒈': 'g',
+    '𝒉': 'h', '𝒊': 'i', '𝒋': 'j', '𝒌': 'k', '𝒍': 'l', '𝒎': 'm', '𝒏': 'n',
+    '𝒐': 'o', '𝒑': 'p', '𝒒': 'q', '𝒓': 'r', '𝒔': 's', '𝒕': 't', '𝒖': 'u',
+    '𝒗': 'v', '𝒘': 'w', '𝒙': 'x', '𝒚': 'y', '𝒛': 'z',
+
+    // Mathematical Alphanumeric Symbols - Bold lowercase (U+1D41A-U+1D433)
+    '𝐚': 'a', '𝐛': 'b', '𝐜': 'c', '𝐝': 'd', '𝐞': 'e', '𝐟': 'f', '𝐠': 'g',
+    '𝐡': 'h', '𝐢': 'i', '𝐣': 'j', '𝐤': 'k', '𝐥': 'l', '𝐦': 'm', '𝐧': 'n',
+    '𝐨': 'o', '𝐩': 'p', '𝐪': 'q', '𝐫': 'r', '𝐬': 's', '𝐭': 't', '𝐮': 'u',
+    '𝐯': 'v', '𝐰': 'w', '𝐱': 'x', '𝐲': 'y', '𝐳': 'z',
+
+    // Mathematical Alphanumeric Symbols - Italic lowercase (U+1D44E-U+1D467)
+    '𝑎': 'a', '𝑏': 'b', '𝑐': 'c', '𝑑': 'd', '𝑒': 'e', '𝑓': 'f', '𝑔': 'g',
+    'ℎ': 'h', '𝑖': 'i', '𝑗': 'j', '𝑘': 'k', '𝑙': 'l', '𝑚': 'm', '𝑛': 'n',
+    '𝑜': 'o', '𝑝': 'p', '𝑞': 'q', '𝑟': 'r', '𝑠': 's', '𝑡': 't', '𝑢': 'u',
+    '𝑣': 'v', '𝑤': 'w', '𝑥': 'x', '𝑦': 'y', '𝑧': 'z',
+
+    // Mathematical Alphanumeric Symbols - Bold Italic lowercase (U+1D4B6-U+1D4CF)
+    '𝙖': 'a', '𝙗': 'b', '𝙘': 'c', '𝙙': 'd', '𝙚': 'e', '𝙛': 'f', '𝙜': 'g',
+    '𝙝': 'h', '𝙞': 'i', '𝙟': 'j', '𝙠': 'k', '𝙡': 'l', '𝙢': 'm', '𝙣': 'n',
+    '𝙤': 'o', '𝙥': 'p', '𝙦': 'q', '𝙧': 'r', '𝙨': 's', '𝙩': 't', '𝙪': 'u',
+    '𝙫': 'v', '𝙬': 'w', '𝙭': 'x', '𝙮': 'y', '𝙯': 'z',
+
+    // Common problematic characters
+    '–': '-', '—': '-', '…': '...', '"': '"', '"': '"', "'": "'", "'": "'",
+    '‚': "'", '„': '"', '‹': '<', '›': '>', '«': '<<', '»': '>>'
+  };
+
+  function normalizeUnicodeForPDF(text) {
+    if (!text) return text;
+
+    // Step 1: Unicode normalize (NFKD) to decompose styled forms into base letters + combining marks
+    // Then remove combining marks so base ASCII letters remain when possible
+    let decomposed = "";
+    try {
+      decomposed = text.normalize ? text.normalize("NFKD") : text;
+    } catch (_) {
+      decomposed = text; // environments without normalize()
+    }
+    const withoutCombining = decomposed.replace(/[\p{Mn}\p{Me}\p{Mc}]/gu, "");
+
+    // Step 2: Apply character-by-character substitution for known problematic code points
+    return Array.from(withoutCombining).map(char => {
+      const code = char.codePointAt(0);
+
+      // Mathematical Alphanumeric Symbols range
+      if (code >= 0x1D400 && code <= 0x1D7FF) {
+        return UNICODE_TO_ASCII_MAP[char] || char;
+      }
+      // General Punctuation (em/en dashes, smart quotes, etc.)
+      if (code >= 0x2010 && code <= 0x206F) {
+        return UNICODE_TO_ASCII_MAP[char] || char;
+      }
+      // Explicit overrides
+      if (UNICODE_TO_ASCII_MAP[char]) return UNICODE_TO_ASCII_MAP[char];
+
+      return char;
+    }).join("");
+  }
+
+  function drawUnicodeSafeTextFallback(text, x, y, options = {}) {
+    if (!text) return x;
+
+    // Split text into individual characters and render them one by one
+    // This helps with Unicode characters that jsPDF has trouble with
+    const chars = Array.from(text);
+    let currentX = x;
+
+    for (const char of chars) {
+      try {
+        if (options.url) {
+          pdf.textWithLink(char, currentX, y, { url: options.url });
+        } else {
+          pdf.text(char, currentX, y);
+        }
+        currentX += pdf.getTextWidth(char);
+      } catch (e) {
+        // If even a single character fails, skip it to avoid complete failure
+        console.warn("Skipping problematic character:", char.codePointAt(0));
+        currentX += pdf.getTextWidth(" ");
+      }
+    }
+
+    return currentX;
   }
 
   function layoutSegmentsIntoLines(segments, maxWidth, size) {
@@ -400,8 +546,11 @@ async function generatePDF(article) {
     }
 
     for (const seg of segments) {
+      // Normalize Unicode characters in the segment text before processing
+      const normalizedText = normalizeUnicodeForPDF(seg.text || "");
+
       // Force-break on newlines inside segments
-      const chunks = String(seg.text || "").split(/(\n)/);
+      const chunks = String(normalizedText).split(/(\n)/);
       for (const chunk of chunks) {
         if (chunk === "\n") {
           pushLine();
@@ -456,7 +605,8 @@ async function generatePDF(article) {
               pdf.link(startX, y - ascent, linkWidth, height, { url: part.link });
             }
           } else {
-            pdf.textWithLink(part.text, x, y, { url: part.link });
+            // Use Unicode-safe text rendering for linked text
+            drawUnicodeSafeText(part.text, x, y, { url: part.link });
             x += part.width;
           }
         } else {
@@ -464,7 +614,8 @@ async function generatePDF(article) {
           if (part.fragments) {
             x = drawFragments(part.fragments, x, y, part, SIZES.body);
           } else {
-            pdf.text(part.text, x, y);
+            // Use Unicode-safe text rendering
+            drawUnicodeSafeText(part.text, x, y);
             x += part.width;
           }
         }
@@ -748,7 +899,7 @@ async function generatePDF(article) {
               pdf.link(startX, y - ascent, linkWidth, height, { url: part.link });
             }
           } else {
-            pdf.textWithLink(part.text, x, y, { url: part.link });
+            drawUnicodeSafeText(part.text, x, y, { url: part.link });
             x += part.width;
           }
         } else {
@@ -756,7 +907,7 @@ async function generatePDF(article) {
           if (part.fragments) {
             x = drawFragments(part.fragments, x, y, part, size);
           } else {
-            pdf.text(part.text, x, y);
+            drawUnicodeSafeText(part.text, x, y);
             x += part.width;
           }
         }
@@ -781,7 +932,7 @@ async function generatePDF(article) {
         if (part.fragments) {
           x = drawFragments(part.fragments, x, y, part, size);
         } else {
-          pdf.text(part.text, x, y);
+          drawUnicodeSafeText(part.text, x, y);
           x += part.width;
         }
       }
@@ -803,7 +954,7 @@ async function generatePDF(article) {
       if (part.fragments) {
         x = drawFragments(part.fragments, x, y, part, SIZES.title);
       } else {
-        pdf.text(part.text, x, y);
+        drawUnicodeSafeText(part.text, x, y);
         x += part.width;
       }
     }
@@ -826,7 +977,7 @@ async function generatePDF(article) {
         if (part.fragments) {
           x = drawFragments(part.fragments, x, y, part, SIZES.subtitle);
         } else {
-          pdf.text(part.text, x, y);
+          drawUnicodeSafeText(part.text, x, y);
           x += part.width;
         }
       }
