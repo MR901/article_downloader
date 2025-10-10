@@ -15,6 +15,8 @@ build: ## Build the extension package using web-ext
 	@echo "Building ArticleDoc Extension..."
 	@echo "Creating extension package..."
 	@command -v web-ext >/dev/null 2>&1 || { echo "web-ext is not installed. Run: npm install -g web-ext"; exit 1; }
+	@echo "Running web-ext lint..."
+	@web-ext lint || { echo "web-ext lint failed"; exit 1; }
 	@web-ext build --overwrite-dest
 	@VERSION=$$(grep '"version"' manifest.json | cut -d'"' -f4); \
 	NAME=$$(grep '"name"' manifest.json | cut -d'"' -f4 | tr ' ' '-' | tr '[:upper:]' '[:lower:]'); \
@@ -72,6 +74,11 @@ lint: ## Run basic linting (requires eslint to be installed)
 	else \
 		echo "eslint not installed. Install with: npm install -g eslint"; \
 	fi
+
+test: ## Run minimal tests (Node-based)
+    @echo "Running tests..."
+    @node tests/references.test.js
+    @node tests/toc.test.js
 
 # Version management
 version-bump: ## Bump version number in manifest.json and related files

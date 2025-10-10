@@ -1,0 +1,14 @@
+deploy.sh
+Makefile
+distribution.html
+REFACTORING_*.md
+SOURCE_SUBMISSION.md
+web-ext-artifacts/
+.cursor/
+node_modules/
+.git/
+.gitignore
+*.test.*
+*.spec.*
+**/*.map
+

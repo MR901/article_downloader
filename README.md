@@ -6,7 +6,7 @@
   <em>Transform articles into clean, readable PDFs</em>
 </p>
 
-[![Version](https://img.shields.io/badge/version-0.1.1-blue.svg)](https://github.com/MR901/articledoc)
+[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/MR901/articledoc)
 [![Firefox Extension](https://img.shields.io/badge/Firefox-Extension-orange.svg)](https://addons.mozilla.org/en-US/firefox/addon/articledoc/)
 
 > **ArticleDoc** - A Firefox extension that converts Medium articles into clean, formatted PDFs with selectable text and preserved images.
@@ -38,7 +38,7 @@
    - Open Firefox and navigate to `about:debugging`
    - Click "This Firefox" in the left sidebar
    - Click "Load Temporary Add-on..."
-   - Select the built extension: `web-ext-artifacts/articledoc-0.1.1.zip`
+   - Select the built extension: `web-ext-artifacts/articledoc-0.2.0.zip`
 
 3. **Start Using**:
    - The ArticleDoc icon will appear in your Firefox toolbar
@@ -88,13 +88,13 @@ AMO stands for 'addons.mozilla.org' — the Firefox Add-ons site.
    - Unlisted (self-distribution; signed XPI for manual install)
 3. Upload your built package:
    - Build it first: `make build`
-   - Upload: `web-ext-artifacts/articledoc-0.1.1.zip`
+   - Upload: `web-ext-artifacts/articledoc-0.2.0.zip`
 4. License choice (private code)
    - If you want it private, choose "All Rights Reserved" in AMO’s license selector.
    - Keep third-party licenses (e.g., jsPDF MIT) in your source archive.
 5. Upload source code (required when minified/processed files are included)
    - Create source archive: `make source-zip`
-   - Upload the generated file: `web-ext-artifacts/articledoc-source-0.1.1.zip`
+   - Upload the generated file: `web-ext-artifacts/articledoc-source-0.2.0.zip`
    - This includes `SOURCE_SUBMISSION.md` with environment and exact build steps.
 6. Reviewer notes (paste a brief summary)
    ```text
@@ -128,7 +128,7 @@ articledoc/
 │   ├── icon-48.png
 │   └── icon-128.png
 └── web-ext-artifacts/    # Built extension packages
-    └── articledoc-0.1.1.zip
+    └── articledoc-0.2.0.zip
 ```
 
 ## Technical Details
@@ -146,8 +146,32 @@ articledoc/
 
 ### Architecture
 
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the modular structure, entry points, and global helpers.
+
+### Documentation
+
+- [docs/overview.md](docs/overview.md)
+- [docs/feature-flags.md](docs/feature-flags.md)
+- [docs/providers.md](docs/providers.md)
+- [docs/testing.md](docs/testing.md)
+
+### Feature Flags (advanced)
+
+You can toggle optional features at runtime for experimentation:
+
+```js
+// In popup DevTools console or content page console (depending on feature)
+window.__ArticleDocFeatures.enableOutlineAndTOC = true;      // Adds a TOC page using captured headings
+window.__ArticleDocFeatures.enableReferencesSection = true;  // Appends a \"References\" block (if mentions exist)
+window.__ArticleDocFeatures.enableRelatedMentions = true;    // Appends \"Other mentions by author\" (provider hints)
+```
+
+Notes:
+- References/Related are built in the content script from available data and provider hints.
+- TOC is rendered in the popup during PDF generation.
+
 - **MV3 Compliance**: Built for Manifest V3 with modern Firefox extension standards
-- **Offline-First**: All dependencies bundled - works without internet after installation
+- **Offline-First**: Dependencies are bundled or lazy-loaded within the extension
 - **Memory Efficient**: Processes content in chunks to handle large articles
 - **Error Resilient**: Graceful handling of missing elements and failed image loads
 
@@ -193,7 +217,7 @@ npm install -g web-ext
 # Build the extension
 make build
 
-# Output: web-ext-artifacts/articledoc-0.1.1.zip
+# Output: web-ext-artifacts/articledoc-0.2.0.zip
 ```
 
 **Option 2: Using web-ext directly**
@@ -223,7 +247,7 @@ web-ext build --overwrite-dest
 ### Code Organization
 
 - **`content.js`**: Article extraction, DOM parsing, content cleaning
-- **`popup.js`**: PDF generation, layout, download triggering
+- **`popup.js`**: PDF generation, layout, download triggering (lazy-loads jsPDF)
 - **`popup.html`**: Simple UI with single action button
 - **`manifest.json`**: Extension metadata, permissions, file mappings
 
@@ -243,11 +267,11 @@ For developers and testing:
 2. **Install Temporarily**:
    - Open Firefox → `about:debugging`
    - Click "This Firefox" → "Load Temporary Add-on"
-   - Select `web-ext-artifacts/articledoc-0.1.1.zip`
+   - Select `web-ext-artifacts/articledoc-0.2.0.zip`
 
 ### Option 2: Direct Download
 
-- **Download**: [`web-ext-artifacts/articledoc-0.1.1.zip`](web-ext-artifacts/articledoc-0.1.1.zip)
+- **Download**: [`web-ext-artifacts/articledoc-0.2.0.zip`](web-ext-artifacts/articledoc-0.2.0.zip)
 - **Distribution Page**: [distribution.html](distribution.html)
 
 ### Option 3: One-Click Install (Coming Soon)
@@ -303,16 +327,16 @@ make release
 
 # Or create manually:
 make release-notes  # Shows template
-gh release create v0.1.1 \
-  --title "ArticleDoc v0.1.1" \
+gh release create v0.2.0 \
+  --title "ArticleDoc v0.2.0" \
   --notes "Your release notes here" \
-  web-ext-artifacts/articledoc-0.1.1.zip
+  web-ext-artifacts/articledoc-0.2.0.zip
 ```
 
 #### 4. **Share Your Release**
 Once created, you'll get a permanent link like:
 ```
-https://github.com/MR901/articledoc/releases/tag/v0.1.1
+https://github.com/MR901/articledoc/releases/tag/v0.2.0
 ```
 
 Users can download from there, and you can link to it in your documentation.
@@ -327,7 +351,7 @@ Users can download from there, and you can link to it in your documentation.
 
 #### Release Notes Template:
 ```markdown
-# ArticleDoc v0.1.1
+# ArticleDoc v0.2.0
 
 ## What's New
 
@@ -337,13 +361,13 @@ Users can download from there, and you can link to it in your documentation.
 
 ## Installation
 
-1. Download: `articledoc-0.1.1.zip`
+1. Download: `articledoc-0.2.0.zip`
 2. Install in Firefox via `about:debugging`
 3. Load the downloaded ZIP file as a temporary add-on
 
 ## Files
 
-- `articledoc-0.1.1.zip` - Firefox extension package
+- `articledoc-0.2.0.zip` - Firefox extension package
 
 ---
 *For more information, see the [README](README.md)*
@@ -407,6 +431,17 @@ The `Makefile` includes automated release creation:
 
 ### [0.1.1] - 2025-10-08
 - AMO support with minor fixes.
+
+### [0.2.0] - 2025-10-10
+- **Major Architectural Refactoring**: Complete modularization with global helper modules
+- **Enhanced Provider System**: Provider-based architecture for easy extensibility to new sites
+- **Improved Code Organization**: Split large files into smaller, maintainable modules with single responsibility
+- **Global Helper Modules**: Added comprehensive helper modules in `libs/` directory (logger, messaging, PDF, TOC, UI, etc.)
+- **Better Documentation**: Added comprehensive documentation in `docs/` directory covering architecture, features, providers, and testing
+- **Shared Types and Configuration**: Added `src/shared/` directory with common types and configuration
+- **Test Infrastructure**: Added test files and testing framework setup
+- **Improved Maintainability**: Enhanced error handling, logging, and code organization for easier maintenance
+- **Build System Improvements**: Better development workflow with enhanced Makefile commands
 
 ## Contributing
 

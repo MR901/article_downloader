@@ -17,6 +17,11 @@
  * Defines the interface that all site-specific providers must implement.
  * Providers can extend this class to add custom extraction logic for different platforms.
  */
+const __BaseProviderCtor = (function() {
+  try { if (window && window.ArticleDocProviders && window.ArticleDocProviders.BaseProvider) return window.ArticleDocProviders.BaseProvider; } catch (_) {}
+  return null;
+})();
+
 class BaseProvider {
   /**
    * Creates a new provider instance
@@ -25,12 +30,14 @@ class BaseProvider {
    * @param {string} config.name - Human-readable provider name
    * @param {RegExp[]} config.urlPatterns - Array of regex patterns for URL matching
    * @param {string[]} config.allowedActions - Array of allowed action types
+   * @param {Object=} config.hints - Optional extraction hints (selectors, strategies)
    */
   constructor(config) {
     this.id = config.id;
     this.name = config.name || config.id;
     this.urlPatterns = config.urlPatterns || []; // Array of RegExp patterns for URL matching
     this.allowedActions = new Set(config.allowedActions || []); // Set of permitted actions
+    this.hints = config.hints || null; // Optional provider-specific hints
   }
 
   /**
@@ -61,6 +68,14 @@ class BaseProvider {
   }
 
   /**
+   * Returns provider-specific extraction hints if available
+   * @returns {Object|null}
+   */
+  getHints() {
+    return this.hints || null;
+  }
+
+  /**
    * Abstract method for article extraction - providers should override this
    * The default implementation throws an error to indicate it must be implemented
    * @returns {Promise<Object>} Extracted article data
@@ -77,6 +92,11 @@ class BaseProvider {
  * Manages a collection of providers and provides URL-based provider lookup.
  * Acts as the central coordinator for the provider system.
  */
+const __ProviderRegistryCtor = (function() {
+  try { if (window && window.ArticleDocProviders && window.ArticleDocProviders.ProviderRegistry) return window.ArticleDocProviders.ProviderRegistry; } catch (_) {}
+  return null;
+})();
+
 class ProviderRegistry {
   /**
    * Creates a new empty provider registry
@@ -118,9 +138,13 @@ class ProviderRegistry {
  */
 ;(function initGlobalRegistry() {
   try {
-    // Only initialize if registry doesn't already exist
     if (!window.__ArticleDocProviderRegistry) {
-      window.__ArticleDocProviderRegistry = new ProviderRegistry();
+      // Prefer global ProviderRegistry when available
+      if (__ProviderRegistryCtor) {
+        window.__ArticleDocProviderRegistry = new __ProviderRegistryCtor();
+      } else {
+        window.__ArticleDocProviderRegistry = new ProviderRegistry();
+      }
     }
   } catch (_) {
     // Silently fail in non-window contexts (service workers, etc.)
@@ -140,7 +164,9 @@ class ProviderRegistry {
     if (!registry) return;
 
     // Create provider for Medium ecosystem sites
-    const mediumProvider = new BaseProvider({
+    // Prefer global BaseProvider when available
+    const ProviderClass = __BaseProviderCtor || BaseProvider;
+    const mediumProvider = new ProviderClass({
       id: "medium",
       name: "Medium",
       // URL patterns for Medium and related platforms
@@ -150,6 +176,21 @@ class ProviderRegistry {
         /^https?:\/\/blog\.stackademic\.com\//i,   // Stackademic blog
       ],
       allowedActions: ["extractArticle"],
+      hints: {
+        bylineSelectors: [
+          'header a[href*="/@"]',
+          'a[rel="author"]'
+        ],
+        relatedSectionSelectors: [
+          'section',
+          'aside'
+        ],
+        linkSelectors: [
+          'a[href^="https://medium.com/"]',
+          'a[href^="https://towardsdatascience.com/"]',
+          'a[href^="https://blog.stackademic.com/"]'
+        ]
+      }
     });
 
     registry.register(mediumProvider);
@@ -165,7 +206,8 @@ class ProviderRegistry {
  * This allows external scripts to inspect or extend the provider system.
  */
 try {
-  window.ArticleDocProviders = { BaseProvider, ProviderRegistry };
-} catch (_) {
-  // Silently fail in non-window contexts
-}
+  // Expose local classes only if a global bundle hasn't already provided them
+  if (!window.ArticleDocProviders) {
+    window.ArticleDocProviders = { BaseProvider, ProviderRegistry };
+  }
+} catch (_) {}

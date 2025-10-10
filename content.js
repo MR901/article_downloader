@@ -19,7 +19,11 @@
  * Provides comprehensive logging with session tracking, timestamps, and
  * different log levels for debugging article extraction processes.
  */
-const Logger = {
+const Logger = (function() {
+  try {
+    if (window && window.__ArticleDocLogger) return window.__ArticleDocLogger;
+  } catch (_) {}
+  return {
   // Session tracking for correlating logs across extraction sessions
   startTime: Date.now(),
   sessionId: Math.random().toString(36).substr(2, 9),
@@ -92,7 +96,8 @@ const Logger = {
     const timestamp = ((Date.now() - Logger.startTime) / 1000).toFixed(2) + 's';
     console.info(`[${timestamp}] ℹ️ ${message}`, data ? { session: Logger.sessionId, ...data } : { session: Logger.sessionId });
   }
-};
+  };
+})();
 
 /**
  * Performance Monitoring System
@@ -681,7 +686,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
         // Skip discovery/recirculation anchors and post preview widgets
         try {
-          if (anchor.hasAttribute && anchor.hasAttribute('data-discover')) return null;
           const href = anchor.getAttribute && anchor.getAttribute('href');
           if (href && /(author_recirc|read_next_recirc|post_responses)/i.test(String(href))) return null;
           if (anchor.closest && anchor.closest('[data-testid="post-preview"]')) return null;
@@ -732,7 +736,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           if (div.getAttribute && div.getAttribute('data-testid') === 'post-preview') return null;
           if (div.closest && div.closest('[data-testid="post-preview"]')) return null;
           if (linkEl) {
-            if (linkEl.hasAttribute && linkEl.hasAttribute('data-discover')) return null;
             const href = linkEl.getAttribute && linkEl.getAttribute('href');
             if (href && /(author_recirc|read_next_recirc|post_responses)/i.test(String(href))) return null;
           }
@@ -751,7 +754,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
       // Remove a card element safely
       removeCard(cardElement, root) {
-        let cardRoot = cardElement.closest('div[class*="q"]');
+        let cardRoot = cardElement.closest('div[class*="q"], div[class*="r"]');
         if (!cardRoot) {
           cardRoot = cardElement.parentElement;
           // Climb to the nearest DIV container but stop at root
@@ -908,8 +911,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (articleEl.contains(a)) return false;
         if (isInResponsesArea(a)) return false; // exclude responses/comments
         if (!a.querySelector('h2')) return false;
-        // Exclude discovery/recirc links
-        if (a.hasAttribute('data-discover')) return false;
+        // Exclude recirculation links
         if (hasRecirculationMarker(a.getAttribute('href'))) return false;
         // Must be visually after article
         let top = 0;
@@ -1069,6 +1071,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     Logger.groupEnd();
 
     Logger.group("Content Block Building");
+    // Remove duplicate subtitle node from content stream if present.
+    // We already render subtitle under the title in the PDF header,
+    // so drop the first H2/P that equals the extracted subtitle.
+    if (subtitle && typeof subtitle === "string" && subtitle.trim()) {
+      const firstH2 = article.querySelector("h2");
+      if (firstH2 && String(firstH2.innerText || "").trim() === subtitle.trim()) {
+        firstH2.remove();
+      } else {
+        const firstP = article.querySelector("p");
+        if (firstP && String(firstP.innerText || "").trim() === subtitle.trim()) {
+          firstP.remove();
+        }
+      }
+    }
     // --- Walk DOM in order and build blocks (group by headings) ---
     const blocks = [];
     let current = { heading: "", level: 0, content: [] };
@@ -1199,7 +1215,51 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     Logger.groupEnd(); // Close Content Block Building group
     Logger.groupEnd(); // Close Article Extraction Process group
 
-    sendResponse({ title, subtitle, author, blocks, publishedDate, readingTimeMinutes, canonicalUrl, heroImage, mentions });
+    try {
+      const basePayload = { title, subtitle, author, blocks, publishedDate, readingTimeMinutes, canonicalUrl, heroImage, mentions };
+      let article = basePayload;
+      if (window && window.__ArticleDocAssembler && typeof window.__ArticleDocAssembler.toArticle === 'function') {
+        article = window.__ArticleDocAssembler.toArticle(basePayload);
+      }
+      try {
+        const flags = (window && window.__ArticleDocFeatures) || {};
+        if (flags.enableReferencesSection && window.__ArticleDocReferences) {
+          const refs = window.__ArticleDocReferences.collectReferences(article);
+          const refSection = window.__ArticleDocReferences.buildReferencesSection(refs);
+          if (refSection) {
+            if (!article.sections && Array.isArray(article.blocks)) {
+              // keep original shape; append as block at end
+              article.blocks.push({ type: 'heading', text: refSection.heading });
+              for (var i = 0; i < refSection.blocks.length; i++) {
+                article.blocks.push(refSection.blocks[i]);
+              }
+            }
+          }
+        }
+        if (flags.enableRelatedMentions && window.__ArticleDocRelated) {
+          let hints = null;
+          try {
+            const registry = window.__ArticleDocProviderRegistry;
+            const href = (typeof location !== 'undefined' && location.href) ? location.href : null;
+            const provider = registry && href ? registry.findProviderByUrl(href) : null;
+            hints = provider && typeof provider.getHints === 'function' ? provider.getHints() : null;
+          } catch(_) {}
+          const items = window.__ArticleDocRelated.collectRelatedMentions(document, article.author, hints);
+          const relSection = window.__ArticleDocRelated.buildRelatedSection(items);
+          if (relSection) {
+            if (!article.sections && Array.isArray(article.blocks)) {
+              article.blocks.push({ type: 'heading', text: relSection.heading });
+              for (var j = 0; j < relSection.blocks.length; j++) {
+                article.blocks.push(relSection.blocks[j]);
+              }
+            }
+          }
+        }
+      } catch (_) {}
+      sendResponse(article);
+    } catch (_) {
+      sendResponse({ title, subtitle, author, blocks, publishedDate, readingTimeMinutes, canonicalUrl, heroImage, mentions });
+    }
   }
   return true;
 });

@@ -35,8 +35,18 @@
     <!-- Main action button that triggers PDF generation -->
     <button id="convert">Generate Clean PDF</button>
 
-    <!-- External library for PDF generation functionality -->
-    <script src="libs/jspdf.umd.min.js"></script>
+    <!-- Global logger (non-module) available to popup and content scripts -->
+    <script src="libs/logger.global.js"></script>
+    <!-- Global messaging wrappers -->
+    <script src="libs/messaging.global.js"></script>
+    <!-- Global PDF helpers (filename/outline hooks) -->
+    <script src="libs/pdf.global.js"></script>
+    <!-- Global TOC builder -->
+    <script src="libs/toc.global.js"></script>
+    <!-- Global UI helpers -->
+    <script src="libs/ui.global.js"></script>
+
+    <!-- jsPDF is lazy-loaded by popup.js when needed -->
 
     <!-- Main popup script containing all the PDF generation logic -->
     <script src="popup.js"></script>

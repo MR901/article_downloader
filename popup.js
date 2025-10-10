@@ -30,7 +30,11 @@
  * Provides comprehensive logging with timestamps, session tracking, and
  * different log levels for debugging and performance monitoring.
  */
-const PopupLogger = {
+const PopupLogger = (function() {
+  try {
+    if (window && window.__ArticleDocLogger) return window.__ArticleDocLogger;
+  } catch (_) {}
+  return {
   // Session tracking for debugging across popup instances
   startTime: Date.now(),
   sessionId: Math.random().toString(36).substr(2, 9),
@@ -103,7 +107,8 @@ const PopupLogger = {
     const timestamp = ((Date.now() - PopupLogger.startTime) / 1000).toFixed(2) + 's';
     console.info(`[${timestamp}] ℹ️ ${message}`, data ? { session: PopupLogger.sessionId, ...data } : { session: PopupLogger.sessionId });
   }
-};
+  };
+})();
 
 /**
  * Updates the status display in the popup UI
@@ -112,9 +117,11 @@ const PopupLogger = {
  */
 function updateStatus(message, type = "info") {
   try {
+    if (window && window.__ArticleDocUI && typeof window.__ArticleDocUI.setStatus === 'function') {
+      return void window.__ArticleDocUI.setStatus('status', message, type);
+    }
     const el = document.getElementById("status");
     if (!el) return;
-    // Set color based on status type for visual feedback
     el.style.color = type === "error" ? "#c00" : type === "success" ? "#0a0" : "#666";
     el.textContent = String(message || "");
   } catch (_) {
@@ -311,6 +318,26 @@ convertBtn.addEventListener("click", async () => {
  * @returns {Promise<jsPDF>} Generated PDF document ready for download
  */
 async function generatePDF(article) {
+  // Lazy-load jsPDF if not present
+  async function ensureJsPdfLoaded() {
+    try {
+      if (window && window.jspdf && window.jspdf.jsPDF) return;
+      await new Promise((resolve, reject) => {
+        try {
+          const s = document.createElement('script');
+          s.src = 'libs/jspdf.umd.min.js';
+          s.onload = () => resolve();
+          s.onerror = (e) => reject(new Error('Failed to load jsPDF'));
+          document.head.appendChild(s);
+        } catch (e) { reject(e); }
+      });
+    } catch (e) {
+      PopupLogger.error('jsPDF load failed', e);
+      throw e;
+    }
+  }
+
+  await ensureJsPdfLoaded();
   const { jsPDF } = window.jspdf;
   // Create PDF with A4 format in points (1/72 inch units)
   const pdf = new jsPDF({ unit: "pt", format: "a4" });
@@ -1217,7 +1244,16 @@ async function generatePDF(article) {
     const size = level === 2 ? SIZES.h2 : level === 3 ? SIZES.h3 : SIZES.h4;
     const lh = Math.round(size * 1.5);
 
-    // Track heading for outline before rendering
+    // Configure font before measuring/drawing
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(size);
+    pdf.setTextColor(...COLORS.body);
+
+    const segs = [{ text, bold: true }];
+    const lines = layoutSegmentsIntoLines(segs, textW, size);
+
+    // Ensure space for the first line, then capture the anchor position
+    ensureSpace(lh);
     outlineHeadings.push({
       id: ++headingCounter,
       text: text,
@@ -1227,12 +1263,8 @@ async function generatePDF(article) {
       title: text
     });
 
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(size);
-    pdf.setTextColor(...COLORS.body);
-    const segs = [{ text, bold: true }];
-    const lines = layoutSegmentsIntoLines(segs, textW, size);
     for (const line of lines) {
+      // Guard against page breaks on subsequent wrapped lines
       ensureSpace(lh);
       let x = margin;
       for (const part of line) {
@@ -1362,6 +1394,9 @@ async function generatePDF(article) {
   // --- Header: Hero image (centered) ---
   if (article.heroImage && article.heroImage.src) {
     await drawImage({ type: "image", src: article.heroImage.src, width: article.heroImage.width, height: article.heroImage.height });
+    // Add a single blank line after the hero image for visual separation
+    ensureSpace(LINE_HEIGHTS.body);
+    y += LINE_HEIGHTS.body;
   }
 
   // Track seen images to avoid duplicating the hero image in content
@@ -1454,24 +1489,86 @@ async function generatePDF(article) {
   }
 
   // Create PDF outline/bookmarks from tracked headings
-  PopupLogger.info(`Creating PDF outline with ${outlineHeadings.length} headings`);
-  if (outlineHeadings.length > 0) {
-    try {
-      createPDFOutline(pdf, outlineHeadings);
-      PopupLogger.success("PDF outline created successfully");
-    } catch (outlineError) {
-      PopupLogger.error("Failed to create PDF outline", outlineError);
+  try {
+    const flags = (window && window.__ArticleDocFeatures) || {};
+    PopupLogger.info(`Creating PDF outline with ${outlineHeadings.length} headings`);
+    if (outlineHeadings.length > 0 && (flags.enableOutlineAndTOC || true)) {
+      try {
+        createPDFOutline(pdf, outlineHeadings);
+        PopupLogger.success("PDF outline created successfully");
+      } catch (outlineError) {
+        PopupLogger.error("Failed to create PDF outline", outlineError);
+      }
+    } else {
+      PopupLogger.info("No headings found for outline");
     }
-  } else {
-    PopupLogger.info("No headings found for outline");
-  }
 
-  pdf.save(buildFilename(article));
+    // Optional TOC append (render as simple page heading + lines)
+    if (flags.enableOutlineAndTOC && window && window.__ArticleDocTOC && typeof window.__ArticleDocTOC.buildTOC === 'function') {
+      try {
+        const toc = window.__ArticleDocTOC.buildTOC(outlineHeadings, 3);
+        if (toc) {
+          pdf.addPage();
+          let y = 56; // margin
+          pdf.setFontSize(16);
+          pdf.text(toc.heading, 56, y);
+          y += 24;
+          pdf.setFontSize(12);
+          for (let i = 0; i < toc.blocks.length; i++) {
+            const line = toc.blocks[i];
+            if (line && line.text) {
+              pdf.text(line.text, 56, y);
+              y += 18;
+              if (y > pdf.internal.pageSize.getHeight() - 56) { pdf.addPage(); y = 56; }
+            }
+          }
+        }
+      } catch (tocError) { PopupLogger.warn("TOC generation failed", { error: String(tocError && (tocError.message || tocError)) }); }
+    }
+  } catch (_) {}
+
+  // --- Footer: Page numbers (bottom-right) ---
+  try {
+    const totalPages = typeof pdf.getNumberOfPages === 'function'
+      ? pdf.getNumberOfPages()
+      : (pdf.internal && typeof pdf.internal.getNumberOfPages === 'function'
+        ? pdf.internal.getNumberOfPages()
+        : 1);
+    const footerSize = Math.max(8, Math.round(SIZES.body * 0.8));
+    for (let i = 1; i <= totalPages; i++) {
+      pdf.setPage(i);
+      const pw = pdf.internal.pageSize.getWidth();
+      const ph = pdf.internal.pageSize.getHeight();
+      const text = String(i);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(footerSize);
+      pdf.setTextColor(...COLORS.muted);
+      const tw = pdf.getTextWidth(text);
+      const x = pw - margin - tw;
+      const y = ph - Math.round(margin * 0.5);
+      pdf.text(text, x, y);
+    }
+  } catch (_) {}
+
+  try {
+    if (window && window.__ArticleDocPDF && typeof window.__ArticleDocPDF.buildFilename === 'function') {
+      pdf.save(window.__ArticleDocPDF.buildFilename(article));
+    } else {
+      pdf.save(buildFilename(article));
+    }
+  } catch (_) {
+    pdf.save(buildFilename(article));
+  }
 }
 
 function createPDFOutline(pdf, headings) {
   try {
     PopupLogger.info("Attempting to create PDF outline", { headings: headings.length });
+    try {
+      if (window && window.__ArticleDocPDF && typeof window.__ArticleDocPDF.createOutline === 'function') {
+        return void window.__ArticleDocPDF.createOutline(pdf, headings, PopupLogger);
+      }
+    } catch (_) {}
     
     // Initialize outline object if it doesn't exist
     if (!pdf.outline) {
@@ -1641,6 +1738,7 @@ function convertImageToDataURL(url, preferPng) {
 
 // --- Chrome MV2-safe Promise wrappers ---
 function queryTabs(queryInfo) {
+  try { if (window && window.__ArticleDocMessaging && window.__ArticleDocMessaging.queryTabs) return window.__ArticleDocMessaging.queryTabs(queryInfo); } catch (_) {}
   return new Promise((resolve, reject) => {
     try {
       chrome.tabs.query(queryInfo, tabs => {
@@ -1676,28 +1774,27 @@ function executeScriptMV2(tabId, file) {
 }
 
 function ensureContentScripts(tabId) {
+  try { if (window && window.__ArticleDocMessaging && window.__ArticleDocMessaging.ensureContentScripts) return window.__ArticleDocMessaging.ensureContentScripts(tabId); } catch (_) {}
   PopupLogger.info("Injecting content scripts into active tab (fallback)");
   try { updateStatus("Preparing extractor on this page…"); } catch (_) {}
-  // Best effort: inject providers first (content depends on it), ignore if already present
   return executeScriptMV2(tabId, "providers.js")
     .catch(() => {})
     .then(() => executeScriptMV2(tabId, "content.js"))
     .then(() => {
       try { updateStatus("Extractor ready. Retrying…"); } catch (_) {}
-      return new Promise(r => setTimeout(r, 100)); // allow listener to register
+      return new Promise(r => setTimeout(r, 100));
     });
 }
 
 function sendMessageToTab(tabId, message) {
+  try { if (window && window.__ArticleDocMessaging && window.__ArticleDocMessaging.sendMessageToTab) return window.__ArticleDocMessaging.sendMessageToTab(tabId, message, { timeoutMs: 5000 }); } catch (_) {}
   return new Promise((resolve, reject) => {
     function shouldTryInject(msg) {
       if (!msg) return false;
       const m = String(msg);
       return /Receiving end does not exist|Could not establish connection|The message port closed/i.test(m);
     }
-
     let timeoutId = null;
-
     const attempt = (hasRetried) => {
       let finished = false;
       try {
@@ -1719,8 +1816,6 @@ function sendMessageToTab(tabId, message) {
           finished = true;
           resolve(response);
         });
-
-        // Timeout safeguard; if it fires and we haven't retried yet, attempt injection once
         timeoutId = setTimeout(() => {
           if (finished) return;
           if (!hasRetried) {
@@ -1741,7 +1836,6 @@ function sendMessageToTab(tabId, message) {
         reject(e);
       }
     };
-
     attempt(false);
   });
 }
