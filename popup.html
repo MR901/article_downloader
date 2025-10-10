@@ -1,18 +1,44 @@
 <!DOCTYPE html>
 <html>
   <head>
+    <!-- Character encoding for proper Unicode support in the popup -->
     <meta charset="utf-8" />
     <title>ArticleDoc</title>
+
+    <!-- Inline CSS for popup UI styling -->
     <style>
-      body { font-family: sans-serif; min-width: 230px; text-align: center; }
-      button { margin: 10px; padding: 8px 12px; font-size: 14px; cursor: pointer; }
+      /* Base styling for the popup interface */
+      body {
+        font-family: sans-serif;
+        min-width: 230px;          /* Minimum width for proper layout */
+        text-align: center;        /* Center all content */
+      }
+
+      /* Button styling for the main action */
+      button {
+        margin: 10px;             /* Spacing around button */
+        padding: 8px 12px;        /* Internal button padding */
+        font-size: 14px;          /* Readable button text size */
+        cursor: pointer;          /* Indicate clickable element */
+      }
     </style>
   </head>
+
   <body>
+    <!-- Extension title displayed at the top of the popup -->
     <h3>ArticleDoc</h3>
+
+    <!-- Status display area for progress messages and error reporting -->
+    <!-- Uses pre-wrap to preserve formatting in status messages -->
     <div id="status" style="min-height:18px;color:#666;margin:6px 10px 0;white-space:pre-wrap"></div>
+
+    <!-- Main action button that triggers PDF generation -->
     <button id="convert">Generate Clean PDF</button>
+
+    <!-- External library for PDF generation functionality -->
     <script src="libs/jspdf.umd.min.js"></script>
+
+    <!-- Main popup script containing all the PDF generation logic -->
     <script src="popup.js"></script>
   </body>
 </html>

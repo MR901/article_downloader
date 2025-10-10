@@ -1,46 +1,67 @@
 {
+  // Manifest Version 2 for browser extension compatibility
   "manifest_version": 2,
   "name": "ArticleDoc",
   "version": "0.1.1",
   "description": "Extract articles into clean, readable PDFs with images.",
   "author": "ArticleDoc",
   "homepage_url": "https://github.com/MR901/articledoc",
+
+  // Firefox-specific configuration requiring minimum version 109.0
   "browser_specific_settings": {
     "gecko": {
       "strict_min_version": "109.0"
     }
   },
+
+  // Required permissions for extension functionality:
+  // - activeTab: Access to the currently active tab for article extraction
+  // - downloads: Enable PDF download functionality
+  // - tabs: Query and interact with browser tabs
+  // - Host permissions for supported article sites and their CDN resources
   "permissions": [
     "activeTab",
     "downloads",
     "tabs",
+    // Medium.com and its subdomains for article content and images
     "*://*.medium.com/*",
     "*://cdn-images-1.medium.com/*",
     "*://miro.medium.com/*",
+    // Additional supported platforms
     "https://blog.stackademic.com/*",
     "https://towardsdatascience.com/*"
   ],
+  // Extension icons in different sizes for various UI contexts
   "icons": {
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
+
+  // Browser action (toolbar button) configuration
   "browser_action": {
+    // HTML popup that opens when user clicks the extension icon
     "default_popup": "popup.html",
+    // Icons displayed on the toolbar button
     "default_icon": {
       "48": "icons/icon-48.png",
       "128": "icons/icon-128.png"
     }
   },
+
+  // Background script that runs persistently in the background
   "background": {
     "scripts": ["background.js"]
   },
+  // Content scripts injected into matching web pages for article extraction
   "content_scripts": [
     {
+      // URL patterns where the content scripts should be injected
       "matches": [
         "*://*.medium.com/*",
         "https://blog.stackademic.com/*",
         "https://towardsdatascience.com/*"
       ],
+      // JavaScript files to inject (order matters - providers.js loads first for provider system)
       "js": ["providers.js", "content.js"]
     }
   ]

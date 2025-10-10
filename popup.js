@@ -1,18 +1,65 @@
-// Enhanced logging utility for popup
+/**
+ * ArticleDoc Popup Script - PDF Generation and User Interface
+ *
+ * This script handles the browser extension popup functionality, including:
+ * - User interface interactions and status updates
+ * - Article extraction coordination with content scripts
+ * - Advanced PDF generation with Unicode support and emoji rendering
+ * - Sophisticated text layout and typography system
+ * - Cross-platform compatibility and error handling
+ *
+ * Architecture Overview:
+ * 1. Logging System: Enhanced debugging and performance monitoring
+ * 2. UI Management: Status updates and user interaction handling
+ * 3. Article Processing: Coordination with content script for extraction
+ * 4. PDF Generation: Complex layout engine with Unicode/emoji support
+ * 5. Typography System: Text measurement, wrapping, and styling
+ * 6. Image Processing: Emoji rendering and inline image handling
+ *
+ * The script uses jsPDF library for PDF creation and implements a sophisticated
+ * text layout system that handles:
+ * - Multi-language Unicode text rendering
+ * - Emoji and special character processing
+ * - Responsive text wrapping and pagination
+ * - Typography styling and spacing
+ */
+
+/**
+ * Enhanced Logging Utility for Popup Script
+ *
+ * Provides comprehensive logging with timestamps, session tracking, and
+ * different log levels for debugging and performance monitoring.
+ */
 const PopupLogger = {
+  // Session tracking for debugging across popup instances
   startTime: Date.now(),
   sessionId: Math.random().toString(36).substr(2, 9),
 
+  /**
+   * Logs general information with timestamp and session tracking
+   * @param {string} message - Log message
+   * @param {Object|null} data - Additional data to include
+   */
   log: (message, data = null) => {
     const timestamp = ((Date.now() - PopupLogger.startTime) / 1000).toFixed(2) + 's';
     console.log(`[${timestamp}] 🔵 ${message}`, data ? { session: PopupLogger.sessionId, ...data } : { session: PopupLogger.sessionId });
   },
 
+  /**
+   * Logs warnings with timestamp and session tracking
+   * @param {string} message - Warning message
+   * @param {Object|null} data - Additional context data
+   */
   warn: (message, data = null) => {
     const timestamp = ((Date.now() - PopupLogger.startTime) / 1000).toFixed(2) + 's';
     console.warn(`[${timestamp}] ⚠️ ${message}`, data ? { session: PopupLogger.sessionId, ...data } : { session: PopupLogger.sessionId });
   },
 
+  /**
+   * Logs errors with detailed error information and stack traces
+   * @param {string} message - Error message
+   * @param {Error|null} error - Error object with stack trace
+   */
   error: (message, error = null) => {
     const timestamp = ((Date.now() - PopupLogger.startTime) / 1000).toFixed(2) + 's';
     console.error(`[${timestamp}] ❌ ${message}`, {
@@ -22,36 +69,72 @@ const PopupLogger = {
     });
   },
 
+  /**
+   * Starts a collapsible console group for organizing related logs
+   * @param {string} message - Group label
+   */
   group: (message) => {
     console.group(`🚀 ${message}`);
   },
 
+  /**
+   * Ends the current console group
+   */
   groupEnd: () => {
     console.groupEnd();
   },
 
+  /**
+   * Logs successful operations with timestamp and session tracking
+   * @param {string} message - Success message
+   * @param {Object|null} data - Additional success context
+   */
   success: (message, data = null) => {
     const timestamp = ((Date.now() - PopupLogger.startTime) / 1000).toFixed(2) + 's';
     console.log(`[${timestamp}] ✅ ${message}`, data ? { session: PopupLogger.sessionId, ...data } : { session: PopupLogger.sessionId });
   },
 
+  /**
+   * Logs informational messages with timestamp and session tracking
+   * @param {string} message - Info message
+   * @param {Object|null} data - Additional context data
+   */
   info: (message, data = null) => {
     const timestamp = ((Date.now() - PopupLogger.startTime) / 1000).toFixed(2) + 's';
     console.info(`[${timestamp}] ℹ️ ${message}`, data ? { session: PopupLogger.sessionId, ...data } : { session: PopupLogger.sessionId });
   }
 };
 
+/**
+ * Updates the status display in the popup UI
+ * @param {string} message - Status message to display
+ * @param {string} type - Status type: "info", "error", or "success"
+ */
 function updateStatus(message, type = "info") {
   try {
     const el = document.getElementById("status");
     if (!el) return;
+    // Set color based on status type for visual feedback
     el.style.color = type === "error" ? "#c00" : type === "success" ? "#0a0" : "#666";
     el.textContent = String(message || "");
-  } catch (_) {}
+  } catch (_) {
+    // Silently handle any DOM errors
+  }
 }
 
+// Get reference to the convert button for event handling
 let convertBtn = document.getElementById("convert");
 
+/**
+ * Main PDF Generation Event Handler
+ *
+ * Orchestrates the entire article-to-PDF conversion process:
+ * 1. Validates active tab and permissions
+ * 2. Extracts article content from the page
+ * 3. Generates PDF with advanced layout and Unicode support
+ * 4. Downloads the resulting PDF file
+ * 5. Provides comprehensive error handling and user feedback
+ */
 convertBtn.addEventListener("click", async () => {
   PopupLogger.group("PDF Generation Process");
   PopupLogger.log("Generate Clean PDF clicked");
@@ -213,78 +296,134 @@ convertBtn.addEventListener("click", async () => {
   }
 });
 
+/**
+ * Advanced PDF Generation Engine
+ *
+ * Creates a high-quality PDF from article data with sophisticated features:
+ * - Unicode text rendering with proper font support
+ * - Emoji processing and inline rendering
+ * - Responsive text layout with proper pagination
+ * - Typography styling and spacing
+ * - Image embedding and positioning
+ * - Table of contents generation
+ *
+ * @param {Object} article - Extracted article data with content, metadata, and styling
+ * @returns {Promise<jsPDF>} Generated PDF document ready for download
+ */
 async function generatePDF(article) {
   const { jsPDF } = window.jspdf;
+  // Create PDF with A4 format in points (1/72 inch units)
   const pdf = new jsPDF({ unit: "pt", format: "a4" });
 
-  // Register Unicode-supporting font for better character support
+  // Track headings for outline generation
+  const outlineHeadings = [];
+  let headingCounter = 0;
+  let currentPageNumber = 1;
+
+  // Debug: Check what's available on the PDF object for outline generation
+  PopupLogger.info("jsPDF object inspection", {
+    hasOutline: !!pdf.outline,
+    outlineKeys: pdf.outline ? Object.keys(pdf.outline) : null,
+    internalKeys: pdf.internal ? Object.keys(pdf.internal).filter(k => k.includes('outline') || k.includes('Outline')) : null
+  });
+
+  // Configure Unicode font support for better international character rendering
   try {
     // Use a more Unicode-friendly font if available
     pdf.setFont("helvetica");
-    // Enable Unicode support flag
+    // Enable Unicode support flag for proper character encoding
     pdf.internal.charSet = 'Unicode';
   } catch (e) {
     console.warn("Could not set Unicode font support:", e.message);
   }
 
-  // --- Layout and Style ---
-  const margin = 56; // ~0.78in
-  const pageH = pdf.internal.pageSize.getHeight();
-  const pageW = pdf.internal.pageSize.getWidth();
-  const textW = pageW - 2 * margin;
-  let y = margin;
+  // === Layout and Typography Configuration ===
 
+  // Page layout constants (in points, 1/72 inch)
+  const margin = 56; // ~0.78 inches - standard document margin
+  const pageH = pdf.internal.pageSize.getHeight(); // A4 height
+  const pageW = pdf.internal.pageSize.getWidth();  // A4 width
+  const textW = pageW - 2 * margin; // Available text width
+  let y = margin; // Current vertical position (starting at top margin)
+
+  // Color scheme for PDF elements (RGB values)
   const COLORS = {
-    body: [20, 20, 20],
-    muted: [110, 110, 110],
-    link: [17, 85, 204],
-    hr: [200, 200, 200],
-    quoteBar: [200, 200, 200],
+    body: [20, 20, 20],      // Dark gray for body text
+    muted: [110, 110, 110],  // Medium gray for metadata
+    link: [17, 85, 204],     // Blue for hyperlinks
+    hr: [200, 200, 200],     // Light gray for horizontal rules
+    quoteBar: [200, 200, 200], // Light gray for quote borders
   };
 
+  // Font sizes for different text elements (in points)
   const SIZES = {
-    title: 22,
-    subtitle: 14.5,
-    meta: 11,
-    h2: 16,
-    h3: 14,
-    h4: 12.5,
-    body: 11,
-    quote: 11,
-    code: 10,
+    title: 22,     // Main article title
+    subtitle: 14.5, // Article subtitle/tagline
+    meta: 11,      // Author, date, reading time
+    h2: 16,        // Second-level headings
+    h3: 14,        // Third-level headings
+    h4: 12.5,      // Fourth-level headings
+    body: 11,      // Regular paragraph text
+    quote: 11,     // Blockquote text
+    code: 10,      // Inline code and code blocks
   };
 
+  // Line heights for different text types (in points)
   const LINE_HEIGHTS = {
-    body: 16,
-    quote: 16,
-    code: 14,
+    body: 16,   // Standard paragraph line height
+    quote: 16,  // Quote line height (same as body)
+    code: 14,   // Code line height (tighter for monospace)
   };
 
+  /**
+   * Normalizes a URL by resolving it relative to the article's canonical URL
+   * @param {string} u - URL to normalize
+   * @returns {string} Fully qualified URL or trimmed string if invalid
+   */
   function normalizeUrl(u) {
     try {
+      // Resolve relative URLs against the article's canonical URL
       return new URL(u, article.canonicalUrl || undefined).href;
     } catch {
+      // Return as-is if URL parsing fails
       return String(u || "").trim();
     }
   }
 
+  /**
+   * Extracts the domain/hostname from a URL
+   * @param {string} u - URL to extract domain from
+   * @returns {string} Domain name or original string if extraction fails
+   */
   function urlToDomain(u) {
     try {
       const x = new URL(u, article.canonicalUrl || undefined);
       return x.hostname;
     } catch {
+      // Fallback regex extraction for malformed URLs
       const s = String(u || "").trim();
       const m = s.match(/^[a-z]+:\/\/([^\/]+)/i);
       return (m && m[1]) || s;
     }
   }
 
+  /**
+   * Ensures sufficient vertical space for the next element, adding new page if needed
+   * @param {number} h - Height required for the next element
+   */
   function ensureSpace(h) {
-    if (y + h <= pageH - margin) return;
-    pdf.addPage();
-    y = margin;
+    if (y + h <= pageH - margin) return; // Enough space on current page
+    pdf.addPage(); // Add new page if insufficient space
+    currentPageNumber++;
+    y = margin; // Reset Y position to top margin of new page
   }
 
+  /**
+   * Sets font properties for body text with color and style
+   * @param {number} size - Font size (default: SIZES.body)
+   * @param {string} style - Font style: "normal", "bold", "italic"
+   * @param {boolean} mono - Use monospace font (Courier) if true
+   */
   function setBodyFont(size = SIZES.body, style = "normal", mono = false) {
     const family = mono ? "courier" : "helvetica";
     pdf.setFont(family, style);
@@ -319,15 +458,28 @@ async function generatePDF(article) {
     }
   }
 
-  // --- Emoji support helpers ---
-  // Cache for canvas, conversions and rendered emoji images
+  // === Advanced Emoji and Unicode Processing System ===
+
+  /**
+   * Emoji Processing Cache System
+   *
+   * Manages canvas resources and caches for efficient emoji rendering:
+   * - Canvas for off-screen emoji rendering
+   * - Pixel-to-point conversion factors
+   * - Rendered emoji data URLs for PDF embedding
+   */
   const __emojiCache = {
-    canvas: null,
-    ctx: null,
-    pxToPtByKey: new Map(),
-    dataUrlByKey: new Map()
+    canvas: null,        // Shared canvas for emoji rendering
+    ctx: null,          // Canvas 2D context
+    pxToPtByKey: new Map(),  // Cache for pixel-to-point conversions
+    dataUrlByKey: new Map()   // Cache for rendered emoji images
   };
 
+  /**
+   * Gets or creates the shared canvas for emoji rendering
+   * Reuses existing canvas if already initialized to avoid recreation overhead
+   * @returns {Object} Canvas and context reference
+   */
   function getCanvas() {
     if (__emojiCache.canvas && __emojiCache.ctx) return __emojiCache;
     const canvas = document.createElement("canvas");
@@ -367,15 +519,23 @@ async function generatePDF(article) {
     return factor;
   }
 
-  // Basic emoji detection per grapheme (Extended_Pictographic or VS-16 or ZWJ sequences)
+  /**
+   * Advanced Emoji Detection System
+   *
+   * Detects emoji characters using multiple strategies:
+   * - Zero Width Joiner (ZWJ) sequences for compound emoji
+   * - Variation Selector-16 for emoji presentation variants
+   * - Extended_Pictographic Unicode property for comprehensive coverage
+   * - Fallback regex for older JavaScript engines
+   */
   function isEmojiGrapheme(gr) {
     if (!gr) return false;
     try {
-      // If contains ZWJ, likely an emoji sequence
+      // If contains ZWJ, likely an emoji sequence (e.g., family emoji 👨‍👩‍👧‍👦)
       if (gr.indexOf("\u200D") !== -1) return true;
-      // Variation Selector-16 indicates emoji presentation
+      // Variation Selector-16 indicates emoji presentation (e.g., ⭐ vs *)
       if (/[\uFE0F]/u.test(gr)) return true;
-      // Extended_Pictographic covers most emoji code points
+      // Extended_Pictographic covers most emoji code points in modern Unicode
       if (/(\p{Extended_Pictographic})/u.test(gr)) return true;
     } catch (_) {
       // Fallback for engines without Unicode property escapes: common emoji ranges
@@ -384,6 +544,20 @@ async function generatePDF(article) {
     return false;
   }
 
+  /**
+   * Unicode Grapheme Segmentation
+   *
+   * Breaks text into user-perceived characters (graphemes) rather than code points.
+   * This is essential for proper handling of:
+   * - Emoji with modifiers (👋🏽)
+   * - Combining characters (é = e + ´)
+   * - Zero-width joiner sequences (👨‍👩‍👧‍👦)
+   *
+   * Uses modern Intl.Segmenter API when available, falls back to code point splitting.
+   *
+   * @param {string} text - Text to segment into graphemes
+   * @returns {string[]} Array of grapheme clusters
+   */
   function segmentGraphemes(text) {
     if (!text) return [];
     if (typeof Intl !== "undefined" && Intl.Segmenter) {
@@ -1042,6 +1216,17 @@ async function generatePDF(article) {
   function drawHeading(text, level) {
     const size = level === 2 ? SIZES.h2 : level === 3 ? SIZES.h3 : SIZES.h4;
     const lh = Math.round(size * 1.5);
+
+    // Track heading for outline before rendering
+    outlineHeadings.push({
+      id: ++headingCounter,
+      text: text,
+      level: level,
+      page: currentPageNumber,
+      y: y,
+      title: text
+    });
+
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(size);
     pdf.setTextColor(...COLORS.body);
@@ -1268,7 +1453,167 @@ async function generatePDF(article) {
     return `${safeTitle || "article"}.pdf`;
   }
 
+  // Create PDF outline/bookmarks from tracked headings
+  PopupLogger.info(`Creating PDF outline with ${outlineHeadings.length} headings`);
+  if (outlineHeadings.length > 0) {
+    try {
+      createPDFOutline(pdf, outlineHeadings);
+      PopupLogger.success("PDF outline created successfully");
+    } catch (outlineError) {
+      PopupLogger.error("Failed to create PDF outline", outlineError);
+    }
+  } else {
+    PopupLogger.info("No headings found for outline");
+  }
+
   pdf.save(buildFilename(article));
+}
+
+function createPDFOutline(pdf, headings) {
+  try {
+    PopupLogger.info("Attempting to create PDF outline", { headings: headings.length });
+    
+    // Initialize outline object if it doesn't exist
+    if (!pdf.outline) {
+      PopupLogger.info("Initializing PDF outline object");
+      // Create the outline object structure that jsPDF expects
+      pdf.outline = {
+        root: { 
+          children: [],
+          parent: null,
+          title: 'Root',
+          dest: null
+        },
+        createNamedDestinations: false,
+        
+        // Add the render method that jsPDF expects
+        render: function() {
+          return this.renderOutlineItems(this.root.children, 0);
+        },
+        
+        renderOutlineItems: function(items, level) {
+          let result = '';
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            result += `${level} 0 obj\n`;
+            result += `<< /Title (${item.title}) `;
+            if (item.dest) {
+              result += `/Dest [${item.dest.join(' ')}] `;
+            }
+            if (item.children && item.children.length > 0) {
+              result += `/Count ${item.children.length} `;
+            }
+            result += '>>\nendobj\n';
+            
+            if (item.children && item.children.length > 0) {
+              result += this.renderOutlineItems(item.children, level + 1);
+            }
+          }
+          return result;
+        },
+        
+        makeRef: function(item) {
+          return `${item.objId || 0} 0 R`;
+        }
+      };
+    }
+
+    // Clear any existing outline
+    pdf.outline.root.children = [];
+    
+    PopupLogger.info("Creating hierarchical outline structure");
+
+    // Build hierarchical structure
+    const rootItems = [];
+    const itemStack = []; // Stack to track parent items for hierarchy
+    
+    for (let i = 0; i < headings.length; i++) {
+      const heading = headings[i];
+      
+      try {
+        // Get page info using jsPDF's internal method
+        const pageInfo = pdf.internal.getPageInfo(heading.page);
+        if (!pageInfo) {
+          PopupLogger.warn(`No page info for page ${heading.page}`);
+          continue;
+        }
+
+        // Convert PDF coordinates properly for navigation
+        // jsPDF uses points (pt) and bottom-left origin
+        // The Y coordinate in the destination should be from the bottom of the page
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        
+        // For PDF destinations, we want the Y coordinate from the bottom
+        // heading.y is from the top, so we need: pageHeight - heading.y
+        const destinationY = pageHeight - heading.y;
+
+        // Create outline item
+        const outlineItem = {
+          title: heading.text,
+          dest: [pageInfo.objId, 'XYZ', null, destinationY, null], // Y from bottom of page
+          level: heading.level,
+          children: [],
+          parent: null,
+          objId: i + 1
+        };
+
+        PopupLogger.info(`Creating outline item: "${heading.text}"`, {
+          level: heading.level,
+          page: heading.page,
+          originalY: heading.y,
+          pageHeight: pageHeight,
+          destinationY: destinationY,
+          pageObjId: pageInfo.objId
+        });
+
+        // Find the correct parent based on heading levels
+        let parentItem = null;
+        
+        // Remove items from stack that are at same or higher level
+        while (itemStack.length > 0 && itemStack[itemStack.length - 1].level >= heading.level) {
+          itemStack.pop();
+        }
+        
+        // If stack is not empty, the top item is our parent
+        if (itemStack.length > 0) {
+          parentItem = itemStack[itemStack.length - 1];
+          parentItem.children.push(outlineItem);
+          outlineItem.parent = parentItem;
+          PopupLogger.info(`Added "${heading.text}" as child of "${parentItem.title}"`);
+        } else {
+          // This is a root-level item
+          rootItems.push(outlineItem);
+          pdf.outline.root.children.push(outlineItem);
+          PopupLogger.info(`Added "${heading.text}" as root item`);
+        }
+        
+        // Add this item to the stack for potential future children
+        itemStack.push(outlineItem);
+        
+      } catch (itemError) {
+        PopupLogger.error(`Failed to create outline item for "${heading.text}"`, itemError);
+      }
+    }
+
+    PopupLogger.success(`Successfully created hierarchical outline with ${pdf.outline.root.children.length} root items`);
+    
+    // Log the hierarchy structure for debugging
+    function logHierarchy(items, indent = '') {
+      for (const item of items) {
+        PopupLogger.info(`${indent}${item.title} (Level ${item.level}, Page ${item.dest[0]}, Y: ${item.dest[3]})`);
+        if (item.children && item.children.length > 0) {
+          logHierarchy(item.children, indent + '  ');
+        }
+      }
+    }
+    
+    PopupLogger.group("Outline Hierarchy");
+    logHierarchy(pdf.outline.root.children);
+    PopupLogger.groupEnd();
+    
+  } catch (e) {
+    PopupLogger.error("Failed to create PDF outline", e);
+  }
 }
 
 function convertImageToDataURL(url, preferPng) {

@@ -1,18 +1,54 @@
-// Enhanced logging utility
+/**
+ * Content Script for ArticleDoc Browser Extension
+ *
+ * This script runs on web pages to extract article content for PDF generation.
+ * It coordinates with the popup script and provider system to identify and
+ * extract structured article data from supported websites.
+ *
+ * Key responsibilities:
+ * - Article content extraction and parsing
+ * - Provider system integration for site-specific logic
+ * - Cross-origin communication with popup script
+ * - Performance monitoring and error handling
+ * - DOM manipulation and content analysis
+ */
+
+/**
+ * Enhanced Logging Utility for Content Script
+ *
+ * Provides comprehensive logging with session tracking, timestamps, and
+ * different log levels for debugging article extraction processes.
+ */
 const Logger = {
+  // Session tracking for correlating logs across extraction sessions
   startTime: Date.now(),
   sessionId: Math.random().toString(36).substr(2, 9),
 
+  /**
+   * Logs general information with timestamp and session context
+   * @param {string} message - Log message
+   * @param {Object|null} data - Additional structured data
+   */
   log: (message, data = null) => {
     const timestamp = ((Date.now() - Logger.startTime) / 1000).toFixed(2) + 's';
     console.log(`[${timestamp}] 🔵 ${message}`, data ? { session: Logger.sessionId, ...data } : { session: Logger.sessionId });
   },
 
+  /**
+   * Logs warnings with context information
+   * @param {string} message - Warning message
+   * @param {Object|null} data - Additional context data
+   */
   warn: (message, data = null) => {
     const timestamp = ((Date.now() - Logger.startTime) / 1000).toFixed(2) + 's';
     console.warn(`[${timestamp}] ⚠️ ${message}`, data ? { session: Logger.sessionId, ...data } : { session: Logger.sessionId });
   },
 
+  /**
+   * Logs errors with detailed error information and stack traces
+   * @param {string} message - Error message
+   * @param {Error|null} error - Error object with stack trace
+   */
   error: (message, error = null) => {
     const timestamp = ((Date.now() - Logger.startTime) / 1000).toFixed(2) + 's';
     console.error(`[${timestamp}] ❌ ${message}`, {
@@ -22,59 +58,100 @@ const Logger = {
     });
   },
 
+  /**
+   * Starts a collapsible console group for organizing related logs
+   * @param {string} message - Group label
+   */
   group: (message) => {
     console.group(`🔍 ${message}`);
   },
 
+  /**
+   * Ends the current console group
+   */
   groupEnd: () => {
     console.groupEnd();
   },
 
+  /**
+   * Logs successful operations with context
+   * @param {string} message - Success message
+   * @param {Object|null} data - Additional success context
+   */
   success: (message, data = null) => {
     const timestamp = ((Date.now() - Logger.startTime) / 1000).toFixed(2) + 's';
     console.log(`[${timestamp}] ✅ ${message}`, data ? { session: Logger.sessionId, ...data } : { session: Logger.sessionId });
   },
 
+  /**
+   * Logs informational messages with context
+   * @param {string} message - Info message
+   * @param {Object|null} data - Additional context data
+   */
   info: (message, data = null) => {
     const timestamp = ((Date.now() - Logger.startTime) / 1000).toFixed(2) + 's';
     console.info(`[${timestamp}] ℹ️ ${message}`, data ? { session: Logger.sessionId, ...data } : { session: Logger.sessionId });
   }
 };
 
-// Performance monitoring
+/**
+ * Performance Monitoring System
+ *
+ * Tracks execution time and memory usage during article extraction.
+ * Helps identify performance bottlenecks and memory leaks.
+ */
 const PerformanceMonitor = {
+  // Track when performance monitoring started
   startTime: performance.now(),
 
+  /**
+   * Measures elapsed time for a completed operation
+   * @param {string} label - Description of the completed operation
+   * @returns {number} Elapsed time in milliseconds
+   */
   measure: (label) => {
     const elapsed = performance.now() - PerformanceMonitor.startTime;
     Logger.info(`${label} completed`, { duration: `${elapsed.toFixed(2)}ms` });
     return elapsed;
   },
 
+  /**
+   * Gets current memory usage information if available
+   * @returns {Object|null} Memory usage stats or null if not supported
+   */
   memory: () => {
     if (performance.memory) {
       return {
-        used: Math.round(performance.memory.usedJSHeapSize / 1024 / 1024),
-        total: Math.round(performance.memory.totalJSHeapSize / 1024 / 1024),
-        limit: Math.round(performance.memory.jsHeapSizeLimit / 1024 / 1024)
+        used: Math.round(performance.memory.usedJSHeapSize / 1024 / 1024),   // MB
+        total: Math.round(performance.memory.totalJSHeapSize / 1024 / 1024), // MB
+        limit: Math.round(performance.memory.jsHeapSizeLimit / 1024 / 1024)  // MB
       };
     }
     return null;
   }
 };
 
+/**
+ * Cross-Origin Message Handler
+ *
+ * Handles communication between content script and popup/background scripts.
+ * Processes extraction requests and responds with article data or error information.
+ */
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // Health check ping from other extension components
   if (msg && msg.type === "ping") {
     sendResponse({ ok: true, scope: "content" });
-    return true;
+    return true; // Indicates async response handler
   }
 
+  // Log incoming message details for debugging
   Logger.info("Message received", {
     action: msg.action,
     sender: sender?.id,
     url: location?.href?.substring(0, 100) + '...'
   });
-  // Support both the new generic action, a forced variant, and the legacy Medium-specific action
+
+  // Handle article extraction requests (supports multiple action types for compatibility)
   if (msg.action === "extractArticle" || msg.action === "forceExtractArticle" || msg.action === "extractMediumArticle") {
     Logger.group("Article Extraction Process");
     Logger.log("Starting article extraction", {
@@ -86,7 +163,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     const isForce = msg.action === "forceExtractArticle";
 
-    // Provider gating using global registry (skip when forced)
+    /**
+     * Provider System Integration
+     *
+     * Uses the global provider registry to determine the appropriate extraction strategy:
+     * - Checks if current URL matches any registered provider patterns
+     * - Falls back to default Medium extraction logic if no provider matches
+     * - Can be bypassed with "force" mode for debugging/troubleshooting
+     */
     if (!isForce) {
       try {
         const href = (typeof location !== 'undefined' && location.href) ? location.href : null;
@@ -125,23 +209,39 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       Logger.info("Force extraction requested: using Medium logic as fallback");
     }
 
+    /**
+     * Intelligent Article Container Detection
+     *
+     * Uses heuristic scoring to identify the main article content area:
+     * 1. Finds all paragraph elements on the page
+     * 2. Scores potential container elements based on paragraph density
+     * 3. Prefers containers with longer, substantive paragraphs
+     * 4. Considers semantic HTML elements (article, main, section)
+     */
     function findBestArticleContainerHeuristic() {
       Logger.log("Searching for best article container using heuristics");
       try {
         const paragraphs = Array.from(document.querySelectorAll("p"));
         const candidateScoreByElement = new Map();
+
+        // Score potential container elements based on paragraph content
         for (const p of paragraphs) {
           const text = (p.innerText || "").trim();
-          if (text.length < 80) continue; // prefer substantive paragraphs
+          if (text.length < 80) continue; // prefer substantive paragraphs (>80 chars)
           let ancestor = p;
+
+          // Walk up the DOM tree to find potential container elements
           for (let i = 0; i < 6 && ancestor; i++) {
             ancestor = ancestor.parentElement;
             if (!ancestor) break;
+            // Only consider semantic container elements
             if (!/^(ARTICLE|MAIN|SECTION|DIV)$/i.test(ancestor.tagName)) continue;
             const prev = candidateScoreByElement.get(ancestor) || 0;
             candidateScoreByElement.set(ancestor, prev + 1);
           }
         }
+
+        // Find the container with highest score
         let best = null;
         let maxScore = 0;
         for (const [el, score] of candidateScoreByElement.entries()) {
