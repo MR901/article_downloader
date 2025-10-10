@@ -1,0 +1,22 @@
+---
+globs: manifest.json
+description: Manifest compliance and AMO warnings
+---
+# Manifest Compliance (Firefox/AMO)
+
+- Add Firefox data consent keys under `browser_specific_settings.gecko` (validate with AMO linter):
+```json
+{
+  "browser_specific_settings": {
+    "gecko": {
+      "strict_min_version": "109.0",
+      "data_collection_permissions": {
+        "required": []
+      }
+    }
+  }
+}
+```
+- Keep permissions minimal and host-specific.
+- Ensure `content_scripts.matches` aligns with providers; keep CDN hosts only if needed for images.
+

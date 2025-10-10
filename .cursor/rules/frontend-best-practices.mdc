@@ -1,0 +1,15 @@
+---
+globs: *.js,*.html
+description: Frontend code hygiene, modularity, OOP patterns, file sizing, DOM safety
+---
+# Frontend Best Practices
+
+- **Modularity**: Small/medium files; single responsibility; functions ≤ 50 lines when practical.
+- **OOP where helpful**: Providers and PDF renderer as classes with clear interfaces; prefer pure functions for DOM→model transforms.
+- **DOM safety**: Avoid `document.write`; prefer `textContent` and DOM APIs over `innerHTML` with dynamic data.
+- **Sanitization**: Sanitize any dynamic HTML if insertion is unavoidable.
+- **State**: No hidden globals; pass dependencies explicitly; avoid mutating shared state.
+- **Logging**: Use a single logger with levels, timers, and groups; no `console.*` scattered.
+- **Errors**: Normalize errors; return typed results to the popup for user-facing messages.
+- **Performance**: Cache repeated measurements (emoji widths, images); batch layout operations.
+

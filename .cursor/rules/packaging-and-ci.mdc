@@ -1,0 +1,18 @@
+---
+description: Packaging hygiene and CI/linting
+---
+# Packaging & CI
+
+- Exclude non-runtime files from the XPI via `.web-extensionignore`:
+```gitignore
+deploy.sh
+Makefile
+distribution.html
+REFACTORING_*.md
+SOURCE_SUBMISSION.md
+web-ext-artifacts/
+```
+- Run `web-ext lint` in build/CI; fail on warnings about unsafe DOM or packaging.
+- Source zip for AMO should include readable sources, license, and `SOURCE_SUBMISSION.md`.
+- Reference build scripts: [Makefile](mdc:Makefile)
+

@@ -17,7 +17,7 @@ AMO requires readable source for any minified content. We include provenance and
 - content.js
 - popup.html
 - popup.js
-- libs/jspdf.umd.min.js
+- libs/jspdf.umd.min.js (third-party: official jsPDF UMD build, unmodified)
 - icons/icon-48.png
 - icons/icon-128.png
 
@@ -40,7 +40,7 @@ From the project root:
 # 1) Build the extension ZIP exactly as submitted
 web-ext build --overwrite-dest
 
-# Output: ./web-ext-artifacts/articledoc-<version>.zip
+# Output: ./web-ext-artifacts/articledoc-<version>.zip (where <version> matches manifest.json)
 ```
 
 This output is the same artifact used for submission. We do not perform any additional processing.

@@ -38,7 +38,7 @@
    - Open Firefox and navigate to `about:debugging`
    - Click "This Firefox" in the left sidebar
    - Click "Load Temporary Add-on..."
-   - Select the built extension: `web-ext-artifacts/articledoc-0.2.0.zip`
+   - Select the built extension: `web-ext-artifacts/articledoc-<version>.zip`
 
 3. **Start Using**:
    - The ArticleDoc icon will appear in your Firefox toolbar
@@ -67,13 +67,13 @@ AMO stands for 'addons.mozilla.org' — the Firefox Add-ons site.
 2. Sign for self-distribution (unlisted)
    ```bash
    # Builds and requests signing; outputs a signed .xpi
-   make sign-unlisted
+   make sign  # Choose 'u' for unlisted when prompted
    ```
 
 3. Submit for listing (public AMO page)
    ```bash
    # Triggers AMO listed-channel submission and review
-   make sign-listed
+   make sign  # Choose 'l' for listed when prompted
    ```
 
 4. After approval
@@ -88,13 +88,13 @@ AMO stands for 'addons.mozilla.org' — the Firefox Add-ons site.
    - Unlisted (self-distribution; signed XPI for manual install)
 3. Upload your built package:
    - Build it first: `make build`
-   - Upload: `web-ext-artifacts/articledoc-0.2.0.zip`
+   - Upload: `web-ext-artifacts/articledoc-<version>.zip`
 4. License choice (private code)
    - If you want it private, choose "All Rights Reserved" in AMO’s license selector.
    - Keep third-party licenses (e.g., jsPDF MIT) in your source archive.
 5. Upload source code (required when minified/processed files are included)
    - Create source archive: `make source-zip`
-   - Upload the generated file: `web-ext-artifacts/articledoc-source-0.2.0.zip`
+   - Upload the generated file: `web-ext-artifacts/articledoc-source-<version>.zip`
    - This includes `SOURCE_SUBMISSION.md` with environment and exact build steps.
 6. Reviewer notes (paste a brief summary)
    ```text
@@ -110,7 +110,7 @@ AMO stands for 'addons.mozilla.org' — the Firefox Add-ons site.
    - Listed: copy your AMO listing URL and share it.
    - Unlisted: download the signed XPI provided by AMO for distribution.
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 articledoc/
@@ -121,14 +121,20 @@ articledoc/
 ├── content.js            # Article extraction and content scraping
 ├── background.js         # Minimal background script (MV2)
 ├── distribution.html     # Landing page for distribution
-├── deploy.sh             # Alternative build script
-├── libs/
-│   └── jspdf.umd.min.js  # Bundled jsPDF library for offline use
+├── libs/                 # Global helper modules and third-party libraries
+│   ├── jspdf.umd.min.js  # Bundled jsPDF library for offline use
+│   ├── *.global.js       # Global helper modules (logger, messaging, PDF, etc.)
+│   └── types.shared.js   # Shared TypeScript definitions
 ├── icons/                # Extension icons (48x48, 128x128)
 │   ├── icon-48.png
 │   └── icon-128.png
+├── docs/                 # Documentation files
+│   ├── ARCHITECTURE.md   # System architecture overview
+│   ├── feature-flags.md  # Feature flag documentation
+│   ├── providers.md      # Provider system documentation
+│   └── testing.md        # Testing guidelines
 └── web-ext-artifacts/    # Built extension packages
-    └── articledoc-0.2.0.zip
+    └── articledoc-<version>.zip
 ```
 
 ## Technical Details
@@ -147,6 +153,7 @@ articledoc/
 ### Architecture
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the modular structure, entry points, and global helpers.
+Type definitions live in `libs/types.shared.js` and are imported via JSDoc for editor hints.
 
 ### Documentation
 
@@ -201,11 +208,15 @@ Notes:
 | `make clean` | Remove build artifacts |
 | `make install` | Build and install in Firefox for testing |
 | `make serve` | Serve distribution page locally |
+| `make test` | Run minimal tests (Node-based) |
+| `make lint` | Run basic linting (requires eslint) |
 | `make info` | Show project information |
 | `make check-deps` | Check if required tools are installed |
 | `make version-bump` | Update version number in manifest.json |
 | `make release` | Build and create GitHub release |
 | `make release-notes` | Show release notes template |
+| `make source-zip` | Package source for AMO submission |
+| `make sign` | Sign extension with AMO (interactive) |
 
 ### Building from Source
 
@@ -217,7 +228,7 @@ npm install -g web-ext
 # Build the extension
 make build
 
-# Output: web-ext-artifacts/articledoc-0.2.0.zip
+# Output: web-ext-artifacts/articledoc-<version>.zip
 ```
 
 **Option 2: Using web-ext directly**
@@ -267,11 +278,11 @@ For developers and testing:
 2. **Install Temporarily**:
    - Open Firefox → `about:debugging`
    - Click "This Firefox" → "Load Temporary Add-on"
-   - Select `web-ext-artifacts/articledoc-0.2.0.zip`
+   - Select `web-ext-artifacts/articledoc-<version>.zip`
 
 ### Option 2: Direct Download
 
-- **Download**: [`web-ext-artifacts/articledoc-0.2.0.zip`](web-ext-artifacts/articledoc-0.2.0.zip)
+- **Download**: [`web-ext-artifacts/articledoc-<version>.zip`](web-ext-artifacts/articledoc-<version>.zip)
 - **Distribution Page**: [distribution.html](distribution.html)
 
 ### Option 3: One-Click Install (Coming Soon)

@@ -1,0 +1,22 @@
+---
+alwaysApply: true
+---
+# Project Structure Guide
+
+### Entry points
+- Popup UI → [popup.html](mdc:popup.html) loads global helpers (`libs/*.global.js`) and [popup.js](mdc:popup.js); jsPDF is lazy-loaded by `popup.js`.
+- Content scripts → [providers.js](mdc:providers.js), [content.js](mdc:content.js), plus global helpers
+- Background lifecycle → [background.js](mdc:background.js)
+- Manifest → [manifest.json](mdc:manifest.json)
+
+### Responsibilities
+- `popup.js`: Orchestrates tab lookup, messaging, article extraction, and PDF generation.
+- `content.js`: Extracts and normalizes article content from the DOM; integrates with provider registry.
+- `providers.js`: Base provider class + registry; Medium-family provider and URL matching.
+- `background.js`: Minimal message handler and lifecycle.
+- `libs/*.global.js`: Logger, messaging, providers, assembler, features, references/related, PDF helpers, TOC, UI.
+- `libs/jspdf.umd.min.js`: Third-party PDF lib, lazy-loaded by `popup.js`.
+
+### Data flow
+1) Popup asks content script to extract → 2) Content returns normalized article → 3) Popup renders PDF (outline/TOC/images/text) → 4) Saves PDF.
+

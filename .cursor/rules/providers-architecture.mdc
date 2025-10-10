@@ -1,0 +1,13 @@
+---
+globs: providers.js,content.js
+description: Provider registry and matching; adding new providers safely
+---
+# Providers Architecture
+
+- Implement `BaseProvider` with:
+  - `id`, `name`, `urlPatterns: RegExp[]`, `allowedActions: Set<string>`
+  - `supports(url: string): boolean` (pattern-based)
+- Use `ProviderRegistry` to register and find by URL; do not hardcode host logic in content script.
+- Providers can supply `hints` (byline selectors, related section/link selectors) exposed via `getHints()`; content uses them to enrich related mentions.
+- Respect `allowedActions` to gate capabilities per site.
+

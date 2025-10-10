@@ -1,0 +1,11 @@
+---
+globs: *.js
+description: Unified logging and error handling strategy
+---
+# Logging & Errors
+
+- Use a shared logger with levels: `log/info/warn/error/success`, groups, and timers; include session IDs.
+- Structure logs with small JSON payloads; avoid large DOM nodes/blobs.
+- Normalize errors to `{ code, message, details? }` and return across messaging boundaries instead of throwing.
+- User-facing messages go through popup status updates; avoid leaking raw errors to UI.
+

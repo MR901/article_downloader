@@ -1,3 +1,8 @@
+/** @typedef {import('./libs/types.shared.js').Article} Article */
+/** @typedef {import('./libs/types.shared.js').Section} Section */
+/** @typedef {import('./libs/types.shared.js').Block} Block */
+/** @typedef {import('./libs/types.shared.js').Reference} Reference */
+/** @typedef {import('./libs/types.shared.js').RelatedMention} RelatedMention */
 /**
  * ArticleDoc Popup Script - PDF Generation and User Interface
  *
@@ -316,6 +321,9 @@ convertBtn.addEventListener("click", async () => {
  *
  * @param {Object} article - Extracted article data with content, metadata, and styling
  * @returns {Promise<jsPDF>} Generated PDF document ready for download
+ */
+/**
+ * @param {Article} article
  */
 async function generatePDF(article) {
   // Lazy-load jsPDF if not present

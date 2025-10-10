@@ -16,6 +16,12 @@ Run linter and build package:
 make build   # runs web-ext lint, then builds
 ```
 
+Or run them separately:
+```bash
+make lint    # runs eslint if available
+make build   # runs web-ext lint, then builds
+```
+
 Tips:
 - Use popup DevTools for runtime debugging (Right-click popup → Inspect)
 - Use browser console to monitor background/content logs

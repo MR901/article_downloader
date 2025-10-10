@@ -1,0 +1,14 @@
+---
+alwaysApply: true
+description: WebExtension best practices for Firefox; permissions, messaging, content/background separation
+---
+# WebExtension Guidelines
+
+- Use `browser.*` Promise APIs (via polyfill) instead of callback-style `chrome.*` when feasible.
+- Keep background minimal; avoid DOM or page access there.
+- Content scripts must be pure page analyzers; no heavy work—send structured results back.
+- Minimize permissions; prefer host-specific patterns and optional permissions when adding new sites.
+- Use robust messaging wrappers with timeouts/retries; never assume listeners exist.
+- Don’t block the popup UI; lazy-load heavy code (PDF engine) only in popup.
+- Validate with `web-ext lint` before packaging; exclude non-runtime files from the XPI.
+

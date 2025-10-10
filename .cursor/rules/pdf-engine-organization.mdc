@@ -1,0 +1,16 @@
+---
+globs: popup.js
+description: PDF engine structure, outline/TOC hooks, emoji/images performance
+---
+# PDF Engine Organization
+
+- Keep `generatePDF(article)` a thin orchestrator; delegate to:
+  - `layout`: pagination and coordinates
+  - `text`: wrapping, Unicode normalization, grapheme segmentation
+  - `emoji`: measurement and cached rasterization
+  - `images`: loading/embedding with sizing
+  - `outline/toc`: heading capture → outline tree → optional TOC section
+- Expose hooks like `onHeadingPlaced(id, page, dest)` to build outline/TOC without mixing concerns.
+- Lazy-load the PDF library in `popup.js` to avoid blocking the popup.
+- Vendor third-party PDF library with CSP-safe build (no `document.write`/unsafe `innerHTML`).
+
