@@ -76,9 +76,9 @@ lint: ## Run basic linting (requires eslint to be installed)
 	fi
 
 test: ## Run minimal tests (Node-based)
-    @echo "Running tests..."
-    @node tests/references.test.js
-    @node tests/toc.test.js
+	@echo "Running tests..."
+	@node tests/references.test.js
+	@node tests/toc.test.js
 
 # Version management
 version-bump: ## Bump version number in manifest.json and related files
