@@ -40,7 +40,7 @@ ArticleDoc is a Firefox extension that extracts article content and generates hi
   - `generatePDF(article)` renders the PDF via jsPDF
   - Uses `__ArticleDocPDF.createOutline` and optional `__ArticleDocTOC`
 
-## Data Model (JS typedefs in `src/shared/types.js`)
+## Data Model (JS typedefs in `libs/types.shared.js`)
 
 - `Article`, `Section`, `Block`, `Reference`, `RelatedMention`
 
@@ -51,9 +51,8 @@ ArticleDoc is a Firefox extension that extracts article content and generates hi
 
 ## AMO Compliance
 
-- `.web-extensionignore` excludes non-runtime files
-- `manifest.json` includes `browser_specific_settings.gecko.data_collection_permissions`
-- Build runs `web-ext lint` before packaging
+- Keep permissions host-specific and minimal per `manifest.json`
+- Build and validate with `web-ext lint` before packaging
 
 ## Future Work
 

@@ -1,3 +1,23 @@
+## PDF Engine Migration Note
+
+This repository currently uses jsPDF for PDF generation. During AMO hardening, experimental scaffolding for PDF-lib was added and is now parked under `libs/niu/`:
+
+- `libs/niu/pdf-pdflib.global.js` (prototype adapter, not wired)
+- `libs/niu/pdf-lib.min.js` (vendored build, not loaded)
+
+Rationale:
+- AMO flags jsPDF’s internal use of `document.write`/`innerHTML` with warnings, but they are non-blocking.
+- We may migrate to PDF-lib later to eliminate those warnings entirely.
+
+High-level migration plan (future):
+1. Introduce a `PdfEngine` interface and implement `JsPdfEngine` and `PdfLibEngine` behind it.
+2. Update `popup.js` `generatePDF(article)` to depend only on the interface; inject chosen engine.
+3. Port features: text layout/wrapping, links, images, outline/TOC hooks, emoji rendering, and measurement utilities.
+4. Embed fonts explicitly (Unicode coverage), ensure pagination parity and performance.
+5. Remove jsPDF when feature parity is achieved and AMO validation is clean.
+
+Status: No runtime changes rely on PDF-lib today; jsPDF remains the active engine. The `niu` files are retained only as a staging area and should be excluded from packaging if possible.
+
 # ArticleDoc Refactoring - Executive Summary
 
 > **Purpose**: This document provides a quick summary of the refactoring proposals for the ArticleDoc Firefox extension.
