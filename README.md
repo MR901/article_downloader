@@ -1,4 +1,6 @@
-# ArticleDoc
+<div align="center">
+
+<h1>Firefox Extension: ArticleDoc</h1>
 
 <p align="center">
   <img src="icons/icon-128.png" alt="ArticleDoc icon" width="96" height="96">
@@ -6,10 +8,14 @@
   <em>Transform articles into clean, readable PDFs</em>
 </p>
 
-[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/MR901/articledoc)
-[![Firefox Extension](https://img.shields.io/badge/Firefox-Extension-orange.svg)](https://addons.mozilla.org/en-US/firefox/addon/articledoc/)
+[![Firefox Extension](https://img.shields.io/badge/Firefox-Extension-orange.svg)](https://addons.mozilla.org/en-US/firefox/addon/articledoc/) ![Medium](https://img.shields.io/badge/Medium-12100E) ![Firefox](https://img.shields.io/badge/Firefox-FF7139) [![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/MR901/articledoc)
 
-> **ArticleDoc** - A Firefox extension that converts Medium articles into clean, formatted PDFs with selectable text and preserved images.
+
+</div>
+
+<br>
+
+**ArticleDoc** - A Firefox extension that converts Medium articles into clean, formatted PDFs with selectable text and preserved images.
 
 ## Features
 
@@ -22,9 +28,18 @@
 
 ## Quick Start
 
+### One-Click Install
+[Install from Firefox browser add-on store](https://addons.mozilla.org/en-GB/android/addon/articledoc/)
+
+### Direct Download
+
+- **Download**: [`web-ext-artifacts/articledoc-<version>.zip`](web-ext-artifacts/articledoc-<version>.zip)
+- **Distribution Page**: [distribution.html](distribution.html)
+
+
 ### Installation (Temporary Add-on)
 
-1. **Download & Build**:
+1. **Clone & Build**:
    ```bash
    # Clone or download the project
    git clone https://github.com/MR901/articledoc.git
@@ -39,76 +54,12 @@
    - Click "This Firefox" in the left sidebar
    - Click "Load Temporary Add-on..."
    - Select the built extension: `web-ext-artifacts/articledoc-<version>.zip`
-
+     
 3. **Start Using**:
    - The ArticleDoc icon will appear in your Firefox toolbar
    - Navigate to any Medium article
    - Click the extension icon and select "Generate Clean PDF"
 
-### One-Click Install (Coming Soon)
-*Official Firefox Add-ons submission in progress for permanent installation.*
-
-### Publishing to Firefox Add-ons (AMO)
-
-AMO stands for 'addons.mozilla.org' — the Firefox Add-ons site.
-
-1. Prerequisites
-   - Create an AMO developer account and generate API keys: `addons.mozilla.org` → Developer Hub → Credentials.
-   - Export credentials in your shell:
-     ```bash
-     export AMO_JWT_ISSUER=your_amo_api_key
-     export AMO_JWT_SECRET=your_amo_api_secret
-     ```
-   - Ensure `manifest.json` includes Firefox fields:
-     - `browser_specific_settings.gecko.id` (temporary ID for first upload; AMO may assign an ID)
-     - `strict_min_version`
-     - `homepage_url`
-
-2. Sign for self-distribution (unlisted)
-   ```bash
-   # Builds and requests signing; outputs a signed .xpi
-   make sign  # Choose 'u' for unlisted when prompted
-   ```
-
-3. Submit for listing (public AMO page)
-   ```bash
-   # Triggers AMO listed-channel submission and review
-   make sign  # Choose 'l' for listed when prompted
-   ```
-
-4. After approval
-   - Your add-on will have an AMO listing URL and automatic update hosting.
-   - Future uploads with the same `gecko.id` will version-increment and update users.
-
-#### Detailed AMO submission steps (with links)
-
-1. Visit the Firefox Add-ons Developer Hub: [Firefox Add-ons Developer Hub](https://addons.mozilla.org/en-US/developers/addons) (AMO Developer Hub)
-2. Click "Submit a New Add-on" and choose your channel:
-   - Listed (public listing on AMO)
-   - Unlisted (self-distribution; signed XPI for manual install)
-3. Upload your built package:
-   - Build it first: `make build`
-   - Upload: `web-ext-artifacts/articledoc-<version>.zip`
-4. License choice (private code)
-   - If you want it private, choose "All Rights Reserved" in AMO’s license selector.
-   - Keep third-party licenses (e.g., jsPDF MIT) in your source archive.
-5. Upload source code (required when minified/processed files are included)
-   - Create source archive: `make source-zip`
-   - Upload the generated file: `web-ext-artifacts/articledoc-source-<version>.zip`
-   - This includes `SOURCE_SUBMISSION.md` with environment and exact build steps.
-6. Reviewer notes (paste a brief summary)
-   ```text
-   All first-party code is plain JS/HTML and human-readable.
-   Third-party: libs/jspdf.umd.min.js is the official jsPDF UMD build, unmodified (MIT).
-   Build steps: Node >=18, install web-ext, then `web-ext build --overwrite-dest`.
-   Source archive includes SOURCE_SUBMISSION.md with reproduction details.
-   ```
-7. IDs and updates
-   - Listed: omit `browser_specific_settings.gecko.id` and AMO will assign one.
-   - Unlisted: keep a stable `gecko.id` (email-like or GUID) for updates.
-8. After review
-   - Listed: copy your AMO listing URL and share it.
-   - Unlisted: download the signed XPI provided by AMO for distribution.
 
 ## Project Structure
 
@@ -150,21 +101,11 @@ articledoc/
    - Automatic pagination for long articles
    - Selectable, searchable text output
 
-### Architecture
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the modular structure, entry points, and global helpers.
-Type definitions live in `libs/types.shared.js` and are imported via JSDoc for editor hints.
-
-### Documentation
-
-- [docs/overview.md](docs/overview.md)
-- [docs/feature-flags.md](docs/feature-flags.md)
-- [docs/providers.md](docs/providers.md)
-- [docs/testing.md](docs/testing.md)
 
 ### Feature Flags (advanced)
 
-You can toggle optional features at runtime for experimentation:
+You can toggle optional features at runtime for experimentation: ([feature-flags documentation](docs/feature-flags.md))
 
 ```js
 // In popup DevTools console or content page console (depending on feature)
@@ -199,6 +140,25 @@ Notes:
 - **Firefox** (for testing)
 - **Make** (optional, for build automation)
 
+### Development Setup
+
+1. **Clone** the repository:
+   ```bash
+   git clone https://github.com/MR901/articledoc.git
+   cd articledoc
+   ```
+
+2. **Install dependencies**:
+   ```bash
+   npm install -g web-ext
+   ```
+
+3. **Make changes** and test:
+   ```bash
+   make build
+   # Load in Firefox for testing
+   ```
+
 ### Development Commands
 
 | Command | Description |
@@ -220,11 +180,14 @@ Notes:
 
 ### Building from Source
 
+Install dependencies
+
+```bash
+npm install -g web-ext
+```
+
 **Option 1: Using Make (Recommended)**
 ```bash
-# Install dependencies (one-time)
-npm install -g web-ext
-
 # Build the extension
 make build
 
@@ -233,9 +196,6 @@ make build
 
 **Option 2: Using web-ext directly**
 ```bash
-# Install web-ext globally
-npm install -g web-ext
-
 # Build the extension
 web-ext build --overwrite-dest
 ```
@@ -262,42 +222,41 @@ web-ext build --overwrite-dest
 - **`popup.html`**: Simple UI with single action button
 - **`manifest.json`**: Extension metadata, permissions, file mappings
 
-## Installation & Distribution
+### Publishing to Firefox Add-ons (AMO)
 
-### Option 1: Development Build (Temporary)
+AMO ('addons.mozilla.org' — the Firefox Add-ons site) submission steps:
 
-For developers and testing:
-
-1. **Clone & Build**:
-   ```bash
-   git clone https://github.com/MR901/articledoc.git
-   cd articledoc
-   make build
+1. Visit the Firefox Add-ons Developer Hub: [Firefox Add-ons Developer Hub](https://addons.mozilla.org/en-US/developers/addons) (AMO Developer Hub)
+2. Click "Submit a New Add-on" and choose your channel:
+   - Listed (public listing on AMO)
+   - Unlisted (self-distribution; signed XPI for manual install)
+3. Upload your built package:
+   - Build it first: `make build`
+   - Upload: `web-ext-artifacts/articledoc-<version>.zip`
+4. License choice (private code)
+   - If you want it private, choose "All Rights Reserved" in AMO’s license selector.
+   - Keep third-party licenses (e.g., jsPDF MIT) in your source archive.
+5. Upload source code (required when minified/processed files are included)
+   - Create source archive: `make source-zip`
+   - Upload the generated file: `web-ext-artifacts/articledoc-source-<version>.zip`
+   - This includes `SOURCE_SUBMISSION.md` with environment and exact build steps.
+6. Reviewer notes (paste a brief summary)
+   ```text
+   All first-party code is plain JS/HTML and human-readable.
+   Third-party: libs/jspdf.umd.min.js is the official jsPDF UMD build, unmodified (MIT).
+   Build steps: Node >=18, install web-ext, then `web-ext build --overwrite-dest`.
+   Source archive includes SOURCE_SUBMISSION.md with reproduction details.
    ```
+7. IDs and updates
+   - Listed: omit `browser_specific_settings.gecko.id` and AMO will assign one.
+   - Unlisted: keep a stable `gecko.id` (email-like or GUID) for updates.
+8. After review
+   - Listed: copy your AMO listing URL and share it.
+   - Unlisted: download the signed XPI provided by AMO for distribution.
+9. After approval
+   - Your add-on will have an AMO listing URL and automatic update hosting.
+   - Future uploads with the same `gecko.id` will version-increment and update users.
 
-2. **Install Temporarily**:
-   - Open Firefox → `about:debugging`
-   - Click "This Firefox" → "Load Temporary Add-on"
-   - Select `web-ext-artifacts/articledoc-<version>.zip`
-
-### Option 2: Direct Download
-
-- **Download**: [`web-ext-artifacts/articledoc-<version>.zip`](web-ext-artifacts/articledoc-<version>.zip)
-- **Distribution Page**: [distribution.html](distribution.html)
-
-### Option 3: One-Click Install (Coming Soon)
-*Official submission to [Firefox Add-ons](https://addons.mozilla.org) in progress for permanent installation with automatic updates.*
-
-## GitHub Releases
-
-### What are GitHub Releases?
-
-GitHub Releases provide a professional way to distribute your software with:
-- **Organized Downloads**: Each release contains your built extension package
-- **Release Notes**: Detailed changelog and installation instructions
-- **Version Tagging**: Proper semantic versioning with git tags
-- **Permanent Links**: Stable URLs for sharing and automation
-- **Download Analytics**: Track how many people download your releases
 
 ### Quick Start with GitHub Releases
 
@@ -384,14 +343,6 @@ Users can download from there, and you can link to it in your documentation.
 *For more information, see the [README](README.md)*
 ```
 
-### Benefits for Your Project
-
-- **Stable URLs**: Releases never change, perfect for documentation
-- **Version History**: Clear progression of your project
-- **User Trust**: Professional presentation builds confidence
-- **Automation Ready**: Can be integrated into CI/CD pipelines
-- **Analytics**: See download counts and trends
-
 ### Integration with Your Build System
 
 The `Makefile` includes automated release creation:
@@ -401,29 +352,6 @@ The `Makefile` includes automated release creation:
 - **Error Handling**: Checks for required tools and tokens
 
 ## Troubleshooting
-
-### Common Issues
-
-**"Extraction failed" error**
-- Ensure you're on a Medium article page (URL contains `medium.com`)
-- Medium occasionally changes their layout - the `<article>` element might need selector updates
-- Check browser console for specific errors
-
-**Images not appearing in PDF**
-- Some Medium images block cross-origin access
-- The extension converts images via canvas with `crossOrigin="anonymous"`
-- Failed images are silently skipped (check Network tab in DevTools)
-
-**Popup shows but nothing happens**
-- Verify all permissions are granted in `manifest.json`
-- Check popup DevTools console (F12) for JavaScript errors
-- Ensure `downloads` permission is allowed by Firefox
-
-**Service worker issues**
-- MV3 service workers are minimal - main logic runs in popup and content scripts
-- If issues persist, reload the extension in `about:debugging`
-
-### Getting Help
 
 1. **Check the console**: Open popup → Right-click → "Inspect" → Console tab
 2. **Network tab**: Monitor for failed image loads or API calls
@@ -453,52 +381,6 @@ The `Makefile` includes automated release creation:
 - **Test Infrastructure**: Added test files and testing framework setup
 - **Improved Maintainability**: Enhanced error handling, logging, and code organization for easier maintenance
 - **Build System Improvements**: Better development workflow with enhanced Makefile commands
-
-## Contributing
-
-We welcome contributions! Here's how to get involved:
-
-### Development Setup
-
-1. **Fork** the repository
-2. **Clone** your fork:
-   ```bash
-   git clone https://github.com/MR901/articledoc.git
-   cd articledoc
-   ```
-
-3. **Install dependencies**:
-   ```bash
-   npm install -g web-ext
-   ```
-
-4. **Make changes** and test:
-   ```bash
-   make build
-   # Load in Firefox for testing
-   ```
-
-### Contribution Guidelines
-
-- **Bug Reports**: Use GitHub Issues with clear reproduction steps
-- **Features**: Discuss in Issues before implementing
-- **Documentation**: Improvements to README, comments, or help text
-- **Testing**: Test on various Medium article types and lengths
-
-### Code Style
-
-- **ES6+ JavaScript**: Modern syntax, arrow functions, async/await
-- **Clear comments**: Explain complex logic and Medium-specific workarounds
-- **Error handling**: Graceful degradation for missing elements
-- **Performance**: Process large articles in chunks
-
-
-## Acknowledgments
-
-- **jsPDF**: Amazing library for client-side PDF generation
-- **Medium**: The platform that inspired this tool
-- **Mozilla**: Firefox extension platform and web-ext tools
-- **Open Source Community**: For the countless utilities and inspiration
 
 ## Links & Resources
 
