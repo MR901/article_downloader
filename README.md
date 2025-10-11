@@ -3,12 +3,14 @@
 <h1>Firefox Extension: ArticleDoc</h1>
 
 <p align="center">
-  <img src="icons/icon-128.png" alt="ArticleDoc icon" width="96" height="96">
+  <a href="https://addons.mozilla.org/en-GB/android/addon/articledoc/">
+    <img src="icons/icon-128.png" alt="ArticleDoc icon" width="96" height="96">
+  </a>
   <br/>
   <em>Transform articles into clean, readable PDFs</em>
 </p>
 
-[![Firefox Extension](https://img.shields.io/badge/Firefox-Extension-orange.svg)](https://addons.mozilla.org/en-US/firefox/addon/articledoc/) ![Medium](https://img.shields.io/badge/Medium-12100E) ![Firefox](https://img.shields.io/badge/Firefox-FF7139) [![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/MR901/articledoc)
+[![Firefox Extension](https://img.shields.io/badge/Firefox-Extension-orange.svg)](https://addons.mozilla.org/en-US/firefox/addon/articledoc/) ![Medium](https://img.shields.io/badge/Medium-12100E) [![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/MR901/articledoc)
 
 
 </div>
